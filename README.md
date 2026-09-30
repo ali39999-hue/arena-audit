@@ -1,13 +1,13 @@
 # Arena Audit (`/arena-audit`)
 
-> **Multi-Agent Tournament Codebase Audit for ZCode & AI Coding Agents**  
-> Inspired by the tournament pattern in `arena-skill`, adapted into a self-tuning **Dynamic Workflow** and reusable **Skill**.
+> **Universal Multi-Agent Tournament Codebase Auditor**  
+> Run thorough, attack/defend multi-agent audits on any codebase in **any AI harness**: ZCode, Claude Code, Cursor, Windsurf, Aider, GitHub Actions CI/CD, or standalone terminal.
 
 ---
 
 ## 🌟 Overview
 
-`arena-audit` runs a rigorous, multi-agent audit on any codebase. Instead of a single LLM giving subjective or unverified advice, `arena-audit` sets up a multi-stage tournament:
+`arena-audit` runs a rigorous, multi-agent audit on any codebase. Instead of trusting a single model's subjective or hallucinated advice, `arena-audit` orchestrates a 5-phase tournament:
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -38,75 +38,87 @@
 │             Stage 5: Principal Judge & Board           │
 │   Deduplicates, sorts by severity, and renders a live  │
 │   findings board + comprehensive markdown report.md.   │
-└────────────────────────────────────────────────────────┘
+└───────────────────────────┬────────────────────────────┘
 ```
 
 ---
 
-## 🚀 Key Advantages
+## ⚡ Multi-Harness Compatibility
 
-- **Zero Hallucinations (Attack / Defend):** Every single bug candidate is challenged by a separate verifier subagent before reaching the final report.
-- **Project-Aware (Not a Generic Linter):** Reads your repository's own `AGENTS.md` and architecture rules to audit what actually matters to your domain (e.g. financial precision, offline sync, auth tokens).
-- **Hard Ground Truth:** Executes local binaries directly (`node_modules/typescript/bin/tsc`, `node_modules/eslint/bin/eslint.js`, etc.) to verify build and test health with real exit codes.
-- **Universal:** Works out-of-the-box on any TypeScript, JavaScript, React, Node, or hybrid codebase.
+`arena-audit` is engineered to adapt automatically to whatever environment you run it in:
+
+| Harness / Environment | Execution Method | Advantages |
+| :--- | :--- | :--- |
+| **ZCode** | Native Dynamic Workflow (`arena-audit.dwf.ts`) | Parallel subagents with smart caching, typed results, and live kanban board |
+| **Claude Code** | `/arena-audit` Skill or CLI runner | Full terminal integration, runs via subagents or direct CLI |
+| **Cursor / Windsurf** | Agent-mode or direct CLI | Works directly inside the IDE terminal |
+| **Terminal / CI/CD** | `npx arena-audit` | Zero external dependencies; works with Anthropic, OpenAI, DeepSeek, Gemini, or local Ollama |
 
 ---
 
-## 📦 Installation
+## 🚀 Quick Start
 
-To use `/arena-audit` across all projects on your machine:
+### 1. Terminal / CI/CD (Universal)
 
-### Option A: Install via Git Clone
-
-Clone directly into your global agent skills directory:
+You don't need any pre-installation. Run directly with `npx` (requires Node.js >= 18):
 
 ```bash
-# Clone the skill
-git clone https://github.com/ali39999-hue/arena-audit.git ~/.agents/skills/arena-audit
+# Run against any provider using your environment variables:
+export ANTHROPIC_API_KEY="your-key"
+# or export OPENAI_API_KEY="your-key"
+# or export DEEPSEEK_API_KEY="your-key"
 
-# Link or copy the workflow definition into your global workflows folder
-mkdir -p ~/.zcode/workflows
-cp ~/.agents/skills/arena-audit/workflows/arena-audit.dwf.ts ~/.zcode/workflows/
+npx arena-audit
 ```
 
-### Option B: Windows Manual Setup
+#### Running with local models (Ollama):
+```bash
+OLLAMA_HOST=http://localhost:11434 npx arena-audit --provider ollama --model llama3.1
+```
 
-1. Copy `SKILL.md` to:
-   ```
-   C:\Users\<YourUser>\.agents\skills\arena-audit\SKILL.md
-   ```
-2. Copy `workflows/arena-audit.dwf.ts` to:
-   ```
-   C:\Users\<YourUser>\.zcode\workflows\arena-audit.dwf.ts
-   ```
+#### Only checking machine gates (tsc, eslint, vitest):
+```bash
+npx arena-audit --gates-only
+```
 
 ---
 
-## 💡 Usage
+### 2. In ZCode
 
-In any ZCode conversation (in any workspace), type:
-
+In any workspace, simply type:
 ```text
 /arena-audit
 ```
+Or in Persian:
+> «این پروژه را با آرنا ممیزی کن»
 
-Or speak in natural language:
-- *"Audit this project with arena"*
-- *"این پروژه را با آرنا ممیزی کن"*
-- *"Run a full multi-agent codebase audit"*
-
-The agent will automatically initiate the tournament workflow in the background and deliver the prioritized report upon completion.
+ZCode will type-check the script and run the tournament in the background with live progress updates.
 
 ---
 
-## 📋 Artifacts Produced
+### 3. In Claude Code
 
-1. **Live Kanban Board (`findings`):** Categorized by status (`تأیید شده` / `نیاز به بازبینی انسانی`) and severity (`بحرانی`, `متوسط`, `کم`).
-2. **Markdown Deliverable (`report.md`):** Complete principal review report including:
-   - Overall project health verdict.
-   - Machine gates outcome (exit codes, error excerpts).
-   - High, medium, and low priority actionable fixes.
-   - Domain lens breakdowns.
+Clone into your global or project skills directory:
+```bash
+git clone https://github.com/ali39999-hue/arena-audit.git ~/.agents/skills/arena-audit
+```
+Then use `/arena-audit` inside Claude Code.
+
+---
+
+## 🛡️ Why the Tournament Pattern?
+
+1. **Elimination of False Positives:** Many LLM code reviews produce theoretical or outdated complaints. In `arena-audit`, a finding is only accepted if an independent verifier re-reads the actual code lines and reproduces the issue.
+2. **Ground-Truth Machine Gates:** Real automated tests, linters, and type checkers are executed directly (`node_modules/typescript/bin/tsc`, `node_modules/eslint/bin/eslint.js`), grounding the AI in concrete facts.
+3. **Repository-Specific Invariants:** Rather than applying generic web checklists, `arena-audit` dynamically reads your project's rules (`AGENTS.md`, `CLAUDE.md`, `package.json`) to audit what actually matters to your architecture.
+
+---
+
+## 📋 Deliverables
+
+When the tournament completes, `arena-audit` outputs:
+- `arena-audit-out/REPORT.md`: An executive markdown report with prioritized, verified issues.
+- `arena-audit-out/findings.json`: Machine-readable results with gate statuses, line references, and verifier rationales.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: arena-audit
-description: "Run an in-depth multi-agent arena tournament audit on the current codebase. Discovers project machine quality gates (typecheck, lint, test), extracts project-specific audit lenses from local documentation (AGENTS.md, CLAUDE.md, README.md), runs parallel specialist reviewers paired with independent verifiers to eliminate false positives, and delivers a prioritized judge's report. Trigger whenever the user mentions `/arena-audit`, 'arena audit', 'ممیزی آرنا', 'ممیزی پروژه', 'audit repo', 'ممیزی کل کدبیس', or asks for a thorough multi-agent codebase tournament audit."
+description: "Run an in-depth multi-agent arena tournament audit on the current codebase. Compatible with all AI agent environments (ZCode, Claude Code, Cursor, Windsurf, Terminal). Discovers project machine quality gates (typecheck, lint, test), extracts domain-specific audit lenses from local project rules (AGENTS.md, CLAUDE.md, README.md), runs parallel specialist reviewers paired with independent verifiers to eliminate false positives, and delivers a prioritized judge's report. Trigger whenever the user mentions `/arena-audit`, 'arena audit', 'ممیزی آرنا', 'ممیزی پروژه', 'audit repo', 'ممیزی کل کدبیس', or asks for a thorough multi-agent codebase tournament audit."
 ---
 
 # /arena-audit
@@ -10,41 +10,45 @@ Execute a multi-agent tournament audit on the current project using the **Arena 
 ## What it does
 
 1. **Machine Quality Gates Discovery:** Detects and executes real project validation binaries (`tsc`, `eslint`, `vitest`, `jest`) directly, recording actual exit codes and stdout/stderr as hard evidence.
-2. **Dynamic Lens Extraction:** Dispatches an initial lead agent to read the repository's rules (`AGENTS.md`, `CLAUDE.md`, `README.md`, architecture docs) and extract 4–7 custom domain lenses and checklists tailored to this specific project.
-3. **Parallel Specialist Reviewers:** Spawns concurrent reviewer agents for each lens to inspect the code without editing it, providing code citations (`path:line`) and evidence.
-4. **Independent Verifiers (Attack/Defend):** Each candidate finding is routed to a separate, fresh verifier agent that re-reads the code independently to confirm or refute the finding, eliminating hallucinations and false positives.
-5. **Principal Judge & Board Report:** An impartial judge agent deduplicates, prioritizes findings by severity, and renders both a live kanban board (`findings`) and a comprehensive markdown report (`report.md`).
+2. **Dynamic Lens Extraction:** Reads repository documentation (`AGENTS.md`, `CLAUDE.md`, `README.md`) to discover 4–7 custom domain lenses and invariants tailored to this specific codebase.
+3. **Parallel Specialist Reviewers:** Reviews the codebase through each lens concurrently with line citations (`path:line`) and code excerpts.
+4. **Independent Verifiers (Attack/Defend):** Each candidate finding is routed to a fresh subagent to reproduce and verify independently, eliminating false positives and AI hallucinations.
+5. **Principal Judge & Board Report:** Deduplicates findings, ranks them by severity, and renders both a live board/manifest and a comprehensive markdown report.
 
 ---
 
-## How to execute
+## Execution Across Different Harnesses
 
-When this skill triggers (via `/arena-audit` or natural language request):
+### 1. In ZCode (Dynamic Workflow Engine)
+If `CreateWorkflow` tool is available:
+```json
+{
+  "name": "ممیزی آرنا — کل پروژه",
+  "saved": {
+    "name": "arena-audit"
+  }
+}
+```
 
-1. **Launch the Saved Dynamic Workflow:**
-   Call the `CreateWorkflow` tool using the global saved workflow:
-   ```json
-   {
-     "name": "ممیزی آرنا — کل پروژه",
-     "saved": {
-       "name": "arena-audit"
-     }
-   }
+### 2. In Claude Code / Cursor / Windsurf / Terminal
+If running in an environment without `CreateWorkflow`:
+
+**Option A (Direct CLI Runner with local/remote LLM):**
+Run the zero-dependency CLI runner:
+```bash
+# Using npx or node
+npx arena-audit
+# Or with your preferred provider key:
+ANTHROPIC_API_KEY=... npx arena-audit
+OPENAI_API_KEY=... npx arena-audit
+DEEPSEEK_API_KEY=... npx arena-audit
+```
+
+**Option B (Agent-Assisted Tournament inside Claude Code / Cursor):**
+1. Run machine gates first:
+   ```bash
+   node <path-to-arena-audit>/bin/arena-audit.mjs --gates-only
    ```
-   *Note: If the user requests specific model selection, pass `subagent_model` as requested.*
-
-2. **Wait for Notification or Inspect Progress:**
-   The workflow executes in the background. If the user asks for progress during the run, inspect it using:
-   ```json
-   {
-     "run_id": "<run_id>"
-   }
-   ```
-   with `GetWorkflowRun`.
-
-3. **Presenting the Final Outcome:**
-   When the run completes, report the summary to the user:
-   - **Judge Verdict:** Overall assessment (whether the project is aligned with its standards).
-   - **Machine Gates:** Status of automated typecheck, lint, and test suites.
-   - **Top Priorities:** Verified issues ranked by severity (`high`, `medium`, `low`).
-   - **Deliverables:** Point the user to the published markdown report and findings board artifacts.
+2. Spawn specialist subagent tasks for each project domain lens.
+3. For every finding reported, spawn a fresh verifier task to confirm with code evidence.
+4. Generate the final markdown report summarizing verified vs unconfirmed findings.
