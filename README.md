@@ -1,147 +1,89 @@
-# 🛡️ Arena Audit (`/arena-audit`)
+# 🛡️ Arena Audit v2 (`/arena-audit`)
 
-> **World-Class, Multi-Agent Tournament Codebase Auditor with Standalone Interactive UI**  
-> Run rigorous, attack/defend multi-agent audits on any codebase across **any AI harness**: ZCode, Claude Code, Cursor, Windsurf, Aider, GitHub Actions CI/CD, or standalone terminal.
-
----
-
-## 🌟 What Makes `arena-audit` World-Class?
-
-While classic code reviewers produce noisy, hallucinated, or unverified opinions, `arena-audit` brings the **adversarial tournament model** to software auditing with **deterministic grounding**:
-
-```
-┌────────────────────────────────────────────────────────┐
-│             Stage 1: Machine Quality Gates             │
-│   Executes actual project binaries: tsc / eslint /     │
-│   vitest / jest. Records real exit codes and errors.   │
-└───────────────────────────┬────────────────────────────┘
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│             Stage 2: Dynamic Lens Extraction           │
-│   Lead agent reads AGENTS.md, CLAUDE.md, README.md,    │
-│   discovering 4–7 custom domain lenses & invariants.   │
-└───────────────────────────┬────────────────────────────┘
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│        Stage 3: Parallel Multi-Lens Specialists        │
-│   Independent reviewer agents audit code concurrently   │
-│   using exact line citations (path:line) and evidence. │
-└───────────────────────────┬────────────────────────────┘
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│        Stage 4: Independent Verifiers (Attack/Defend)  │
-│   Each finding is handed to a separate, fresh agent    │
-│   to independently reproduce/verify or discard it.     │
-└───────────────────────────┬────────────────────────────┘
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│       Stage 5: Principal Judge & Interactive UI        │
-│   Calculates weighted rubric, renders a reactive HTML  │
-│   dashboard, live kanban board & executive markdown.   │
-└────────────────────────────────────────────────────────┘
-```
+> **Evidence-Anchored Multi-Agent Tournament Codebase Auditor**  
+> Every claim is challenged, every finding is anchored to a hashed code excerpt, every gate is a real process exit code. Runs in **any AI harness**: ZCode, Claude Code, Cursor, Windsurf, CI/CD, or plain terminal.
 
 ---
 
-## ⚔️ Comparison: `arena-audit` vs. `arena-skill`
+## ✅ Capability Matrix (Integrity Reset — claims = implementation)
 
-| Capability | `arena-skill` (Original) | `arena-audit` (This Project) |
+| Capability | Status | Evidence |
 | :--- | :--- | :--- |
-| **Primary Purpose** | Brute-force answer generation for single text prompts | **Comprehensive, production-grade codebase auditing** |
-| **Ground Truth Floor** | ❌ None (pure LLM opinion debating LLM opinion) | **✅ Real Machine Gates** (`tsc`, `eslint`, `vitest`, `jest` with exit codes) |
-| **Domain Awareness** | ❌ Generic prompt strategy combinations | **✅ Reads local rules** (`AGENTS.md`, `CLAUDE.md`, ADRs, architecture docs) |
-| **Token Efficiency** | ⚠️ Wasteful (~595 agent calls in 70 waves) | **🎯 Laser-focused** (4–7 targeted specialist lenses + 1:1 verifiers) |
-| **False-Positive Filtering** | Generic attack/defend debate | **Targeted adversarial verification** with exact line citation check |
-| **User Interface** | ❌ Plain text files in `.arena/` | **🖥️ World-class standalone interactive HTML UI + Live Kanban** |
-| **Harness Support** | Claude Code only | **Universal:** ZCode, Claude Code, Cursor, Windsurf, CI/CD, Terminal |
-| **Dependencies** | Python 3.8+ required | **Zero dependencies** (Pure Node.js 18+ ESM) |
+| Machine quality gates (tsc, eslint, vitest, jest, semgrep, gitleaks) with real exit codes | ✅ | `src/gates/registry.mjs` — plugin-style `detect()/run()`, normalized results |
+| Repository intelligence without any LLM | ✅ | `src/intake/repo-snapshot.mjs` — indexer, languages, frameworks, pm, git, deps, tests, CI |
+| Evidence Engine: every finding anchored to a SHA-256 hashed code excerpt | ✅ | `src/evidence/evidence-store.mjs` — unresolvable refs become `invalid`, never verified |
+| Stale evidence detection (code changed → finding flips to `stale`) | ✅ | `isStale()` + final sweep in the runner |
+| Verifier sees REAL code (excerpt + hash + gate results), decides `verified / refuted / inconclusive` with confidence | ✅ | `src/agents/agents.mjs::runVerifier` |
+| True parallel specialists with bounded worker pool (never unbounded `Promise.all`) | ✅ | `src/core/concurrency.mjs::runPool` — one failed item costs one item |
+| Finding fingerprint + cross-lens deduplication | ✅ | `src/findings/findings.mjs` |
+| Scoring 2.0: `NOT CHECKED ≠ PASS` (no gates ⇒ overall = null + coverage %) | ✅ | `computeScores()` — unit tested |
+| Sandbox: secrets stripped from child envs; untrusted repos refused without explicit trust | ✅ | `src/sandbox/policy.mjs` |
+| Versioned audit contract (`audit-run.json`: runId, engine, model, commit, schema) | ✅ | `src/core/schemas.mjs` |
+| Interactive HTML dashboard: Kanban board + rubric + filters, zero CDN, offline | ✅ | `src/dashboard.mjs` |
+| Docker sandbox isolation, AST/semantic layer, SARIF, diff-aware audits, GitHub Checks | 🚧 Planned | See `docs/ARCHITECTURE.md` roadmap alignment |
 
----
+## ⚔️ vs. `arena-skill` (original)
 
-## 🖥️ Standalone Interactive Visual UI
-
-In any environment, `arena-audit` generates a **gorgeous, reactive, single-page dashboard** (`arena-audit-out/index.html`) with zero external CDN dependencies (works 100% offline):
-
-- **📊 Executive Scorecard:** Codebase Health Index (0–100), automated gate badges, and key metrics.
-- **⚔️ Interactive Kanban Board:** Filter verified findings vs false positives by severity (Critical, High, Medium, Low) and domain lens.
-- **🔍 Code Inspector & Evidence Modal:** Clickable `vscode://file/...` links that open the exact file and line in your editor with syntax-highlighted code evidence.
-- **⚖️ Weighted Rubric Matrix:** Breakdown across Machine Integrity, Security, Domain Correctness, Architecture, and Standards.
-
----
-
-## ⚡ Multi-Harness Compatibility
-
-`arena-audit` seamlessly adapts to whatever environment you run it in:
-
-| Harness / Environment | Execution Method | Advantages |
+| | `arena-skill` | `arena-audit` v2 |
 | :--- | :--- | :--- |
-| **ZCode** | Native Dynamic Workflow (`arena-audit.dwf.ts`) | Parallel subagents with smart caching, typed results, and live kanban board |
-| **Claude Code** | `/arena-audit` Skill or CLI runner | Full terminal integration, runs via subagents or direct CLI |
-| **Cursor / Windsurf** | Agent-mode or direct CLI | Works directly inside the IDE terminal |
-| **Terminal / CI/CD** | `npx arena-audit` | Zero external dependencies; works with Anthropic, OpenAI, DeepSeek, Gemini, or local Ollama |
+| Ground truth | None — LLM debates LLM | Real gates + hashed code evidence |
+| Verification | Attack/defend debate on text | Adversarial verifier with actual excerpt + confidence |
+| Parallelism | 70 sequential waves (~595 calls) | Bounded worker pool, targeted lenses (4–7) |
+| False positives | Debated | Anchored or `invalid`; refuted kept & labeled |
+| UI | Text logs in `.arena/` | Interactive offline dashboard + Kanban |
+| Harness | Claude Code only | ZCode, Claude Code, Cursor, Windsurf, CI/CD, terminal |
+| Deps | Python 3.8+ | Zero (Node 18+ only) |
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Universal Terminal / CI/CD
-
-Run directly with `npx` (requires Node.js >= 18):
+### Universal (terminal / CI / any harness)
 
 ```bash
-# Run against any provider using your environment variables:
-export ANTHROPIC_API_KEY="your-key"
-# or export OPENAI_API_KEY="your-key"
-# or export DEEPSEEK_API_KEY="your-key"
-# or export GEMINI_API_KEY="your-key"
+# Full tournament with any provider:
+export ANTHROPIC_API_KEY=...        # or OPENAI_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY
+npx arena-audit --ui                # opens the interactive dashboard when done
 
-# Run audit and automatically open the interactive dashboard:
-npx arena-audit --ui
-```
-
-#### Running with local models (Ollama):
-```bash
+# Local models:
 OLLAMA_HOST=http://localhost:11434 npx arena-audit --provider ollama --model llama3.1 --ui
-```
 
-#### Fast machine-gates check only:
-```bash
+# Machine gates only (real exit codes, dashboard included):
 npx arena-audit --gates-only --ui
+
+# Inside an AI harness without API keys — generate the tournament manifest
+# for the host agent to execute:
+npx arena-audit --agent-mode
 ```
 
----
-
-### 2. In ZCode
-
-In any workspace, simply type:
+### In ZCode
 ```text
 /arena-audit
 ```
-Or in Persian:
-> «این پروژه را با آرنا ممیزی کن»
 
-ZCode will type-check the script and run the tournament in the background with live progress updates.
-
----
-
-### 3. In Claude Code
-
-Clone into your global or project skills directory:
+### In Claude Code
 ```bash
 git clone https://github.com/ali39999-hue/arena-audit.git ~/.agents/skills/arena-audit
 ```
-Then use `/arena-audit` inside Claude Code.
+Then `/arena-audit`.
 
 ---
 
-## 📋 Deliverables
+## 📋 Deliverables (`arena-audit-out/`)
 
-When the tournament completes, `arena-audit` produces:
-1. `arena-audit-out/index.html`: **Interactive Single-Page Visual Dashboard** (openable in any browser).
-2. `arena-audit-out/REPORT.md`: An executive markdown report with prioritized, verified issues.
-3. `arena-audit-out/findings.json`: Machine-readable results with gate statuses, line references, and verifier rationales.
+| File | What it is |
+| :--- | :--- |
+| `index.html` | Interactive offline dashboard: health score (or honest `N/A`), live Kanban (تأیید شده / نیاز به بازبینی / رد شده), rubric matrix, filters, `vscode://` deep links |
+| `audit-run.json` | Versioned manifest: runId, engine/model/commit, full evidence store, all findings with statuses |
+| `findings.json` | Machine-readable scores + findings |
+| `REPORT.md` | Executive verdict, priorities, verified/refuted/inconclusive breakdown, explicit not-covered section |
 
----
+## 🧪 Development
+
+```bash
+npm test          # 29 zero-dependency unit tests (node:test)
+npm run smoke     # self gates-only audit
+```
 
 ## 📄 License
 

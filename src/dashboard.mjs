@@ -8,6 +8,7 @@ export function generateDashboardHtml(data) {
     project = 'Project',
     timestamp = new Date().toISOString(),
     score = 85,
+    scoreUnavailable = false,
     gates = [],
     lenses = [],
     findings = [],
@@ -19,10 +20,15 @@ export function generateDashboardHtml(data) {
       correctness: 80,
       architecture: 90,
       standards: 85
-    }
+    },
+    coverage = null,
+    runMeta = null,
   } = data;
 
   const serializedData = JSON.stringify(data).replace(/</g, '\\u003c');
+  const runMetaLine = runMeta
+    ? `runId: <code>${escapeHtml(runMeta.runId || '')}</code> · engine v${escapeHtml(runMeta.engineVersion || '')} · mode: ${escapeHtml(runMeta.mode || '')} · commit: <code>${escapeHtml(runMeta.commit || 'n/a')}</code>`
+    : `تاریخ ممیزی: ${new Date(timestamp).toLocaleString('fa-IR')}`;
 
   return `<!DOCTYPE html>
 <html lang="fa" dir="rtl" class="dark">
@@ -321,6 +327,64 @@ export function generateDashboardHtml(data) {
       border: 1px solid var(--card-border);
       color: var(--text);
     }
+    /* ── Kanban Board ── */
+    .kanban {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .kanban { grid-template-columns: 1fr; } }
+    .kanban-col {
+      background: #0d1322;
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 200px;
+    }
+    .kanban-col-header {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 4px 10px 4px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .kanban-col[data-col="verified"] .kanban-col-header { color: var(--success); }
+    .kanban-col[data-col="refuted"] .kanban-col-header { color: var(--text-muted); }
+    .kanban-count {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      font-size: 12px;
+      padding: 1px 10px;
+      color: var(--text);
+    }
+    .kanban-col-body { display: flex; flex-direction: column; gap: 10px; }
+    .kanban-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 12px;
+      border-right: 4px solid var(--brand);
+    }
+    .kanban-card.sev-high { border-right-color: var(--danger); }
+    .kanban-card.sev-medium { border-right-color: var(--warning); }
+    .kanban-card.sev-low { border-right-color: var(--success); }
+    .kanban-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .kanban-card-title { font-size: 13px; font-weight: 600; color: #e2e8f0; line-height: 1.5; }
+    .kanban-card-meta { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+    .kanban-empty { color: var(--text-muted); text-align: center; font-size: 12px; padding: 16px 0; }
   </style>
 </head>
 <body>
@@ -334,17 +398,15 @@ export function generateDashboardHtml(data) {
           <span>گزارش ممیزی آرنا (Arena Audit)</span>
           <span class="badge-pill">${escapeHtml(project)}</span>
         </h1>
-        <div class="meta-text">
-          تاریخ ممیزی: <span id="audit-date">${new Date(timestamp).toLocaleString('fa-IR')}</span> · وضعیت: نهایی شده با روبریک ۵گانه
-        </div>
       </div>
       <div class="score-circle">
         <div>
-          <div class="score-number" style="color: ${getScoreColor(score)}">${score}</div>
-          <div class="score-label">شاخص سلامت کدبیس</div>
+          <div class="score-number" style="color: ${scoreUnavailable ? '#94a3b8' : getScoreColor(score)}">${scoreUnavailable ? 'N/A' : score}</div>
+          <div class="score-label">${scoreUnavailable ? 'شواهد ناکافی — NOT CHECKED ≠ PASS' : 'شاخص سلامت کدبیس'}</div>
         </div>
       </div>
     </div>
+    ${runMeta ? `<div class="meta-text" style="direction:ltr; text-align:left; font-size:12px; margin-top:10px;">${runMetaLine}${coverage ? ` · coverage: ${coverage.percent}% (verified: ${coverage.verifiedFindings}, refuted: ${coverage.refutedFindings}, inconclusive: ${coverage.inconclusiveFindings})` : ''}</div>` : `<div class="meta-text">تاریخ ممیزی: <span>${new Date(timestamp).toLocaleString('fa-IR')}</span> · وضعیت: نهایی شده با روبریک ۵گانه</div>`}
   </div>
 </header>
 
@@ -476,44 +538,63 @@ export function generateDashboardHtml(data) {
   <!-- TAB 3: FINDINGS MATRIX -->
   <section id="tab-findings" class="tab-pane">
     <div class="filter-bar">
-      <input type="text" id="search-box" class="search-input" placeholder="جستجو در یافته‌ها یا مسیر فایل..." oninput="filterFindings()">
-      <select id="severity-filter" class="filter-select" onchange="filterFindings()">
+      <input type="text" id="search-box" class="search-input" placeholder="جستجو در یافته‌ها یا مسیر فایل..." oninput="renderFindings()">
+      <select id="severity-filter" class="filter-select" onchange="renderFindings()">
         <option value="all">تمام شدت‌ها</option>
         <option value="high">بحرانی (High)</option>
         <option value="medium">متوسط (Medium)</option>
         <option value="low">کم (Low)</option>
       </select>
-      <select id="status-filter" class="filter-select" onchange="filterFindings()">
+      <select id="status-filter" class="filter-select" onchange="renderFindings()">
         <option value="all">تمام وضعیت‌ها</option>
         <option value="verified">تأیید شده (Verified)</option>
-        <option value="unconfirmed">رد شده / نیاز به بازبینی</option>
+        <option value="refuted">رد شده (Refuted)</option>
+        <option value="inconclusive">نامعین (Inconclusive)</option>
+        <option value="invalid">بی‌اعتبار (Invalid)</option>
       </select>
+      <button class="btn btn-secondary" id="view-toggle" onclick="toggleView()">🔀 حالت: بورد کانبان</button>
     </div>
 
-    <div id="findings-list">
-      ${findings.map((f, i) => `
-        <div class="finding-item" data-severity="${f.severity}" data-status="${f.status}" data-text="${escapeHtml((f.problem + ' ' + f.path + ' ' + (f.evidence || '')).toLowerCase())}">
-          <div class="finding-top">
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <span class="badge ${f.severity === 'high' ? 'badge-high' : (f.severity === 'medium' ? 'badge-medium' : 'badge-low')}">
-                ${f.severity === 'high' ? 'بحرانی' : (f.severity === 'medium' ? 'متوسط' : 'کم')}
-              </span>
-              <span class="badge ${f.status === 'verified' ? 'badge-verified' : 'badge-unconfirmed'}">
-                ${f.status === 'verified' ? 'تأیید شده ✓' : 'رد شده / شکاف مدرک ✗'}
-              </span>
-              <span style="font-size: 12px; color: var(--text-muted);">${escapeHtml(f.lens || 'ممیزی عمومی')}</span>
-            </div>
-            <a href="vscode://file/${escapeHtml(f.path)}" class="finding-where" title="کلیک برای باز کردن در ادیتور">
-              ${escapeHtml(f.path || f.where || '')} ↗
-            </a>
+    <!-- Kanban Board (real board view, synced with README claims) -->
+    <div id="kanban-board" class="kanban">
+      <div class="kanban-col" data-col="verified">
+        <div class="kanban-col-header">✅ تأیید شده <span class="kanban-count" id="count-verified">0</span></div>
+        <div class="kanban-col-body" id="col-verified"></div>
+      </div>
+      <div class="kanban-col" data-col="needs-review">
+        <div class="kanban-col-header">⚠️ نیاز به بازبینی انسانی <span class="kanban-count" id="count-review">0</span></div>
+        <div class="kanban-col-body" id="col-review"></div>
+      </div>
+      <div class="kanban-col" data-col="refuted">
+        <div class="kanban-col-header">🗑️ رد شده توسط تأییدکننده <span class="kanban-count" id="count-refuted">0</span></div>
+        <div class="kanban-col-body" id="col-refuted"></div>
+      </div>
+    </div>
+
+    <!-- List view -->
+    <div id="findings-list" style="display:none;">${findings.map((f) => `
+      <div class="finding-item" data-severity="${f.severity}" data-status="${f.status}" data-text="${escapeHtml((f.problem + ' ' + f.path + ' ' + (f.evidence || '')).toLowerCase())}">
+        <div class="finding-top">
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span class="badge ${f.severity === 'high' ? 'badge-high' : (f.severity === 'medium' ? 'badge-medium' : 'badge-low')}">
+              ${f.severity === 'high' ? 'بحرانی' : (f.severity === 'medium' ? 'متوسط' : 'کم')}
+            </span>
+            <span class="badge ${f.status === 'verified' ? 'badge-verified' : 'badge-unconfirmed'}">
+              ${statusLabel(f.status)}
+            </span>
+            <span style="font-size: 12px; color: var(--text-muted);">${escapeHtml(f.lens || 'ممیزی عمومی')}</span>
           </div>
-          <div class="finding-problem">${escapeHtml(f.problem || f.what || '')}</div>
-          ${f.evidence ? `<pre class="finding-evidence"><code>${escapeHtml(f.evidence)}</code></pre>` : ''}
-          <div class="finding-verifier">
-            <strong>توضیح تأییدکننده:</strong> ${escapeHtml(f.verifierNote || f.note || 'بدون یادداشت تکمیلی')}
-          </div>
+          <a href="vscode://file/${escapeHtml(f.path)}" class="finding-where" title="کلیک برای باز کردن در ادیتور">
+            ${escapeHtml(f.path || f.where || '')} ↗
+          </a>
         </div>
-      `).join('') || '<div class="card" style="text-align: center; color: var(--text-muted);">یافته‌ای ثبت نشد.</div>'}
+        <div class="finding-problem">${escapeHtml(f.problem || f.what || '')}</div>
+        ${f.evidence ? `<pre class="finding-evidence"><code>${escapeHtml(f.evidence)}</code></pre>` : ''}
+        <div class="finding-verifier">
+          <strong>توضیح تأییدکننده:</strong> ${escapeHtml(f.verifierNote || f.note || 'بدون یادداشت تکمیلی')}
+        </div>
+      </div>
+    `).join('') || '<div class="card" style="text-align: center; color: var(--text-muted);">یافته‌ای ثبت نشد.</div>'}
     </div>
   </section>
 
@@ -566,6 +647,31 @@ export function generateDashboardHtml(data) {
 <script>
   const AUDIT_DATA = ${serializedData};
 
+  function statusLabel(s) {
+    const map = {
+      verified: 'تأیید شده ✓',
+      refuted: 'رد شده ✗',
+      inconclusive: 'نامعین ؟',
+      invalid: 'بی‌اعتبار (شواهد یافت نشد)',
+      stale: 'کهنه (کد تغییر کرده)',
+      candidate: 'کاندید',
+    };
+    return map[s] || s;
+  }
+
+  function severityFa(s) {
+    return s === 'high' ? 'بحرانی' : s === 'medium' ? 'متوسط' : 'کم';
+  }
+
+  let boardView = true;
+
+  function toggleView() {
+    boardView = !boardView;
+    document.getElementById('kanban-board').style.display = boardView ? 'grid' : 'none';
+    document.getElementById('findings-list').style.display = boardView ? 'none' : 'block';
+    document.getElementById('view-toggle').innerText = boardView ? '🔀 حالت: بورد کانبان' : '📃 حالت: فهرست';
+  }
+
   function switchTab(tabId) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -575,33 +681,66 @@ export function generateDashboardHtml(data) {
     if (target) target.classList.add('active');
   }
 
-  function filterFindings() {
+  function findingMatches(f) {
     const query = (document.getElementById('search-box').value || '').toLowerCase().trim();
     const severity = document.getElementById('severity-filter').value;
     const status = document.getElementById('status-filter').value;
-
-    const items = document.querySelectorAll('.finding-item');
-    let visibleCount = 0;
-
-    items.forEach(item => {
-      const itemSev = item.getAttribute('data-severity');
-      const itemStat = item.getAttribute('data-status');
-      const itemText = item.getAttribute('data-text');
-
-      const matchesQuery = !query || itemText.includes(query);
-      const matchesSev = severity === 'all' || itemSev === severity;
-      const matchesStat = status === 'all' || itemStat === status;
-
-      if (matchesQuery && matchesSev && matchesStat) {
-        item.style.display = 'block';
-        visibleCount++;
-      } else {
-        item.style.display = 'none';
-      }
-    });
-
-    document.getElementById('findings-count').innerText = visibleCount;
+    const text = ((f.problem || f.what || '') + ' ' + (f.path || f.where || '') + ' ' + (f.evidence || '')).toLowerCase();
+    const matchesQuery = !query || text.includes(query);
+    const matchesSev = severity === 'all' || f.severity === severity;
+    const matchesStat = status === 'all' || f.status === status;
+    return matchesQuery && matchesSev && matchesStat;
   }
+
+  function renderFindings() {
+    const items = AUDIT_DATA.findings || [];
+    const visible = items.filter(findingMatches);
+    document.getElementById('findings-count').innerText = visible.length;
+
+    // Board columns: verified | needs-review (inconclusive/invalid/stale/candidate) | refuted
+    const colVerified = visible.filter(f => f.status === 'verified');
+    const colRefuted = visible.filter(f => f.status === 'refuted');
+    const colReview = visible.filter(f => !['verified', 'refuted'].includes(f.status));
+    const rank = { high: 0, medium: 1, low: 2 };
+    const sortFn = (a, b) => (rank[a.severity] ?? 3) - (rank[b.severity] ?? 3);
+    colVerified.sort(sortFn); colReview.sort(sortFn); colRefuted.sort(sortFn);
+
+    const card = (f) => \`
+      <div class="kanban-card sev-\${f.severity}">
+        <div class="kanban-card-top">
+          <span class="badge \${f.severity === 'high' ? 'badge-high' : (f.severity === 'medium' ? 'badge-medium' : 'badge-low')}">\${severityFa(f.severity)}</span>
+          <a class="finding-where" href="vscode://file/\${escapeJs(f.path || f.where || '')}">\${escapeJs(f.path || f.where || '')} ↗</a>
+        </div>
+        <div class="kanban-card-title">\${escapeJs(f.problem || f.what || '')}</div>
+        <div class="kanban-card-meta">\${escapeJs(f.lens || '')}\${f.confidence != null ? ' · اطمینان: ' + Math.round(f.confidence * 100) + '%' : ''}</div>
+      </div>\`;
+
+    document.getElementById('col-verified').innerHTML = colVerified.map(card).join('') || '<div class="kanban-empty">—</div>';
+    document.getElementById('col-review').innerHTML = colReview.map(card).join('') || '<div class="kanban-empty">—</div>';
+    document.getElementById('col-refuted').innerHTML = colRefuted.map(card).join('') || '<div class="kanban-empty">—</div>';
+    document.getElementById('count-verified').innerText = colVerified.length;
+    document.getElementById('count-review').innerText = colReview.length;
+    document.getElementById('count-refuted').innerText = colRefuted.length;
+
+    // List view filtering
+    document.querySelectorAll('#findings-list .finding-item').forEach(item => {
+      const sev = item.getAttribute('data-severity');
+      const stat = item.getAttribute('data-status');
+      const text = item.getAttribute('data-text');
+      const query = (document.getElementById('search-box').value || '').toLowerCase().trim();
+      const severity = document.getElementById('severity-filter').value;
+      const status = document.getElementById('status-filter').value;
+      const show = (!query || text.includes(query)) && (severity === 'all' || sev === severity) && (status === 'all' || stat === status);
+      item.style.display = show ? 'block' : 'none';
+    });
+  }
+
+  function escapeJs(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  renderFindings();
 </script>
 
 </body>

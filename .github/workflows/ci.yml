@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Unit tests (zero dependencies)
+        run: npm test
+      - name: CLI smoke — help
+        run: node bin/arena-audit.mjs --help
+      - name: CLI smoke — self gates-only audit on a fixture repo
+        shell: bash
+        run: |
+          mkdir -p tests/fixtures/demo && cd tests/fixtures/demo
+          printf '{"name":"demo","dependencies":{"react":"18"}}' > package.json
+          printf 'export const add = (a, b) => a + b;\n' > calc.js
+          node ../../../bin/arena-audit.mjs . --gates-only --output out
+          node -e "const r=require('./out/audit-run.json'); if(!r.run.runId) process.exit(1); console.log('runId:', r.run.runId, '· score:', r.run.scores);"
+      - name: Upload dashboard artifact
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        uses: actions/upload-artifact@v4
+        with:
+          name: arena-dashboard
+          path: tests/fixtures/demo/out/index.html

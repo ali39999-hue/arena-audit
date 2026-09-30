@@ -1,7 +1,7 @@
 {
   "name": "arena-audit",
-  "version": "1.0.0",
-  "description": "Multi-agent tournament codebase audit engine for any AI harness (Claude Code, Cursor, Windsurf, ZCode, CLI)",
+  "version": "2.0.0",
+  "description": "Evidence-anchored multi-agent tournament codebase audit engine for any AI harness (Claude Code, Cursor, Windsurf, ZCode, CI/CD)",
   "main": "bin/arena-audit.mjs",
   "bin": {
     "arena-audit": "./bin/arena-audit.mjs"
@@ -9,7 +9,8 @@
   "type": "module",
   "scripts": {
     "start": "node bin/arena-audit.mjs",
-    "test": "node bin/arena-audit.mjs --gates-only"
+    "test": "node --test \"tests/unit/**/*.test.mjs\"",
+    "smoke": "node bin/arena-audit.mjs --gates-only"
   },
   "repository": {
     "type": "git",
@@ -18,13 +19,16 @@
   "keywords": [
     "ai-agent",
     "audit",
+    "evidence-engine",
+    "devsecops",
     "claude-code",
     "zcode",
     "cursor",
     "code-review",
     "tournament",
     "arena",
-    "multi-agent"
+    "multi-agent",
+    "sarif"
   ],
   "author": "ali39999-hue",
   "license": "MIT",
