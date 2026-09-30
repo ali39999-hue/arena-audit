@@ -1,13 +1,13 @@
-# Arena Audit (`/arena-audit`)
+# 🛡️ Arena Audit (`/arena-audit`)
 
-> **Universal Multi-Agent Tournament Codebase Auditor**  
-> Run thorough, attack/defend multi-agent audits on any codebase in **any AI harness**: ZCode, Claude Code, Cursor, Windsurf, Aider, GitHub Actions CI/CD, or standalone terminal.
+> **World-Class, Multi-Agent Tournament Codebase Auditor with Standalone Interactive UI**  
+> Run rigorous, attack/defend multi-agent audits on any codebase across **any AI harness**: ZCode, Claude Code, Cursor, Windsurf, Aider, GitHub Actions CI/CD, or standalone terminal.
 
 ---
 
-## 🌟 Overview
+## 🌟 What Makes `arena-audit` World-Class?
 
-`arena-audit` runs a rigorous, multi-agent audit on any codebase. Instead of trusting a single model's subjective or hallucinated advice, `arena-audit` orchestrates a 5-phase tournament:
+While classic code reviewers produce noisy, hallucinated, or unverified opinions, `arena-audit` brings the **adversarial tournament model** to software auditing with **deterministic grounding**:
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -35,17 +35,43 @@
 └───────────────────────────┬────────────────────────────┘
                             ▼
 ┌────────────────────────────────────────────────────────┐
-│             Stage 5: Principal Judge & Board           │
-│   Deduplicates, sorts by severity, and renders a live  │
-│   findings board + comprehensive markdown report.md.   │
-└───────────────────────────┬────────────────────────────┘
+│       Stage 5: Principal Judge & Interactive UI        │
+│   Calculates weighted rubric, renders a reactive HTML  │
+│   dashboard, live kanban board & executive markdown.   │
+└────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## ⚔️ Comparison: `arena-audit` vs. `arena-skill`
+
+| Capability | `arena-skill` (Original) | `arena-audit` (This Project) |
+| :--- | :--- | :--- |
+| **Primary Purpose** | Brute-force answer generation for single text prompts | **Comprehensive, production-grade codebase auditing** |
+| **Ground Truth Floor** | ❌ None (pure LLM opinion debating LLM opinion) | **✅ Real Machine Gates** (`tsc`, `eslint`, `vitest`, `jest` with exit codes) |
+| **Domain Awareness** | ❌ Generic prompt strategy combinations | **✅ Reads local rules** (`AGENTS.md`, `CLAUDE.md`, ADRs, architecture docs) |
+| **Token Efficiency** | ⚠️ Wasteful (~595 agent calls in 70 waves) | **🎯 Laser-focused** (4–7 targeted specialist lenses + 1:1 verifiers) |
+| **False-Positive Filtering** | Generic attack/defend debate | **Targeted adversarial verification** with exact line citation check |
+| **User Interface** | ❌ Plain text files in `.arena/` | **🖥️ World-class standalone interactive HTML UI + Live Kanban** |
+| **Harness Support** | Claude Code only | **Universal:** ZCode, Claude Code, Cursor, Windsurf, CI/CD, Terminal |
+| **Dependencies** | Python 3.8+ required | **Zero dependencies** (Pure Node.js 18+ ESM) |
+
+---
+
+## 🖥️ Standalone Interactive Visual UI
+
+In any environment, `arena-audit` generates a **gorgeous, reactive, single-page dashboard** (`arena-audit-out/index.html`) with zero external CDN dependencies (works 100% offline):
+
+- **📊 Executive Scorecard:** Codebase Health Index (0–100), automated gate badges, and key metrics.
+- **⚔️ Interactive Kanban Board:** Filter verified findings vs false positives by severity (Critical, High, Medium, Low) and domain lens.
+- **🔍 Code Inspector & Evidence Modal:** Clickable `vscode://file/...` links that open the exact file and line in your editor with syntax-highlighted code evidence.
+- **⚖️ Weighted Rubric Matrix:** Breakdown across Machine Integrity, Security, Domain Correctness, Architecture, and Standards.
 
 ---
 
 ## ⚡ Multi-Harness Compatibility
 
-`arena-audit` is engineered to adapt automatically to whatever environment you run it in:
+`arena-audit` seamlessly adapts to whatever environment you run it in:
 
 | Harness / Environment | Execution Method | Advantages |
 | :--- | :--- | :--- |
@@ -58,27 +84,29 @@
 
 ## 🚀 Quick Start
 
-### 1. Terminal / CI/CD (Universal)
+### 1. Universal Terminal / CI/CD
 
-You don't need any pre-installation. Run directly with `npx` (requires Node.js >= 18):
+Run directly with `npx` (requires Node.js >= 18):
 
 ```bash
 # Run against any provider using your environment variables:
 export ANTHROPIC_API_KEY="your-key"
 # or export OPENAI_API_KEY="your-key"
 # or export DEEPSEEK_API_KEY="your-key"
+# or export GEMINI_API_KEY="your-key"
 
-npx arena-audit
+# Run audit and automatically open the interactive dashboard:
+npx arena-audit --ui
 ```
 
 #### Running with local models (Ollama):
 ```bash
-OLLAMA_HOST=http://localhost:11434 npx arena-audit --provider ollama --model llama3.1
+OLLAMA_HOST=http://localhost:11434 npx arena-audit --provider ollama --model llama3.1 --ui
 ```
 
-#### Only checking machine gates (tsc, eslint, vitest):
+#### Fast machine-gates check only:
 ```bash
-npx arena-audit --gates-only
+npx arena-audit --gates-only --ui
 ```
 
 ---
@@ -106,19 +134,12 @@ Then use `/arena-audit` inside Claude Code.
 
 ---
 
-## 🛡️ Why the Tournament Pattern?
-
-1. **Elimination of False Positives:** Many LLM code reviews produce theoretical or outdated complaints. In `arena-audit`, a finding is only accepted if an independent verifier re-reads the actual code lines and reproduces the issue.
-2. **Ground-Truth Machine Gates:** Real automated tests, linters, and type checkers are executed directly (`node_modules/typescript/bin/tsc`, `node_modules/eslint/bin/eslint.js`), grounding the AI in concrete facts.
-3. **Repository-Specific Invariants:** Rather than applying generic web checklists, `arena-audit` dynamically reads your project's rules (`AGENTS.md`, `CLAUDE.md`, `package.json`) to audit what actually matters to your architecture.
-
----
-
 ## 📋 Deliverables
 
-When the tournament completes, `arena-audit` outputs:
-- `arena-audit-out/REPORT.md`: An executive markdown report with prioritized, verified issues.
-- `arena-audit-out/findings.json`: Machine-readable results with gate statuses, line references, and verifier rationales.
+When the tournament completes, `arena-audit` produces:
+1. `arena-audit-out/index.html`: **Interactive Single-Page Visual Dashboard** (openable in any browser).
+2. `arena-audit-out/REPORT.md`: An executive markdown report with prioritized, verified issues.
+3. `arena-audit-out/findings.json`: Machine-readable results with gate statuses, line references, and verifier rationales.
 
 ---
 

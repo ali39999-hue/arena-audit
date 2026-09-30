@@ -6,12 +6,14 @@
  * Runs anywhere Node.js >= 18 is installed:
  *   - Works in terminal (direct API via OpenAI, Anthropic, Gemini, DeepSeek, Ollama)
  *   - Works inside any AI Harness (Claude Code, Cursor, Windsurf, ZCode, Aider)
+ *   - Generates interactive, standalone HTML Dashboard + Markdown + JSON
  *   - Zero external npm dependencies.
  */
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join, basename } from 'node:path';
+import { generateDashboardHtml } from '../src/dashboard.mjs';
 
 // --- Terminal Styles ---
 const isTTY = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -41,6 +43,7 @@ let targetDir = process.cwd();
 let outputDir = resolve(targetDir, 'arena-audit-out');
 let gatesOnly = false;
 let agentMode = false;
+let openUi = false;
 let provider = process.env.ARENA_PROVIDER || null;
 let modelName = process.env.ARENA_MODEL || null;
 
@@ -53,6 +56,8 @@ for (let i = 0; i < args.length; i++) {
     gatesOnly = true;
   } else if (arg === '--agent-mode') {
     agentMode = true;
+  } else if (arg === '--open' || arg === '--ui') {
+    openUi = true;
   } else if (arg === '--output' || arg === '-o') {
     outputDir = resolve(process.cwd(), args[++i]);
   } else if (arg === '--provider' || arg === '-p') {
@@ -74,6 +79,7 @@ Arguments:
 Options:
   --gates-only         Only detect and run machine quality gates (tsc, lint, test)
   --agent-mode         Prepare structured tournament manifests for host AI agent
+  --ui, --open         Automatically launch the interactive HTML dashboard in browser
   -o, --output <dir>   Output directory for reports (default: ./arena-audit-out)
   -p, --provider <p>   LLM provider (openai, anthropic, gemini, deepseek, ollama)
   -m, --model <name>   Override default model name
@@ -86,6 +92,62 @@ Environment Variables:
   DEEPSEEK_API_KEY     Use DeepSeek models directly
   OLLAMA_HOST          Use local Ollama instance (default: http://localhost:11434)
 `);
+}
+
+// --- Browser Launch Helper ---
+function openInBrowser(targetPath) {
+  try {
+    const platform = process.platform;
+    if (platform === 'win32') {
+      spawnSync('cmd.exe', ['/c', 'start', '""', targetPath], { stdio: 'ignore' });
+    } else if (platform === 'darwin') {
+      spawnSync('open', [targetPath], { stdio: 'ignore' });
+    } else {
+      spawnSync('xdg-open', [targetPath], { stdio: 'ignore' });
+    }
+  } catch (_) {}
+}
+
+// --- SSRF & Host Security Validation ---
+function isPrivateOrReservedHost(hostname) {
+  if (!hostname) return true;
+  const lower = hostname.toLowerCase();
+  if (lower === 'localhost' || lower === '127.0.0.1' || lower === '::1' || lower === '0.0.0.0') {
+    return true;
+  }
+  const ipv4Match = lower.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const [_, a, b, c, d] = ipv4Match.map(Number);
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 0) return true;
+    if (a >= 224) return true;
+  }
+  return false;
+}
+
+function safeValidateUrl(urlString, allowLocal = false) {
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch (e) {
+    throw new Error(`Invalid URL: ${urlString}`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Forbidden protocol '${parsed.protocol}'. Only http and https allowed.`);
+  }
+  if (!allowLocal && isPrivateOrReservedHost(parsed.hostname)) {
+    throw new Error(`Security Exception: Host '${parsed.hostname}' is a localhost/private/reserved address.`);
+  }
+  return parsed;
+}
+
+async function safeFetch(urlString, options = {}, allowLocal = false) {
+  safeValidateUrl(urlString, allowLocal);
+  return await fetch(urlString, options);
 }
 
 // --- Provider Detection ---
@@ -222,14 +284,14 @@ function extractDocsContext(cwd) {
   return combined;
 }
 
-// --- Unified LLM Calling (Zero Dependencies) ---
+// --- Unified LLM Calling (Zero Dependencies & Safe Fetch) ---
 async function callLLM(providerName, systemPrompt, userPrompt) {
   const prov = providerName.toLowerCase();
   
   if (prov === 'anthropic') {
     const key = process.env.ANTHROPIC_API_KEY;
     const model = modelName || 'claude-3-5-sonnet-latest';
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await safeFetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -253,7 +315,7 @@ async function callLLM(providerName, systemPrompt, userPrompt) {
     const key = isDeepSeek ? process.env.DEEPSEEK_API_KEY : process.env.OPENAI_API_KEY;
     const url = isDeepSeek ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions';
     const model = modelName || (isDeepSeek ? 'deepseek-chat' : 'gpt-4o');
-    const resp = await fetch(url, {
+    const resp = await safeFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -276,7 +338,7 @@ async function callLLM(providerName, systemPrompt, userPrompt) {
     const key = process.env.GEMINI_API_KEY;
     const model = modelName || 'gemini-1.5-pro-latest';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-    const resp = await fetch(url, {
+    const resp = await safeFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -293,7 +355,7 @@ async function callLLM(providerName, systemPrompt, userPrompt) {
   if (prov === 'ollama') {
     const host = process.env.OLLAMA_HOST || 'http://localhost:11434';
     const model = modelName || 'llama3.1';
-    const resp = await fetch(`${host}/api/chat`, {
+    const resp = await safeFetch(`${host}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -304,7 +366,7 @@ async function callLLM(providerName, systemPrompt, userPrompt) {
           { role: 'user', content: userPrompt },
         ],
       }),
-    });
+    }, true /* allow local for explicit Ollama setup */);
     if (!resp.ok) throw new Error(`Ollama API error: ${resp.status} ${await resp.text()}`);
     const data = await resp.json();
     return data.message.content;
@@ -329,6 +391,43 @@ function parseJSONFromText(text) {
   }
 }
 
+// --- Health Score & Rubric Calculator ---
+function calculateScores(gates, findings) {
+  let score = 100;
+
+  // Deduct for failed machine gates (ground truth)
+  for (const g of gates) {
+    if (!g.ok) score -= 15;
+  }
+
+  // Deduct for verified findings
+  const verified = findings.filter(f => f.status === 'verified');
+  for (const f of verified) {
+    if (f.severity === 'high') score -= 12;
+    else if (f.severity === 'medium') score -= 6;
+    else score -= 2;
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  // Compute Rubric Matrix
+  const passedGates = gates.filter(g => g.ok).length;
+  const machineGatesScore = gates.length > 0 ? Math.round((passedGates / gates.length) * 100) : 100;
+  
+  const highIssues = verified.filter(f => f.severity === 'high').length;
+  const medIssues = verified.filter(f => f.severity === 'medium').length;
+
+  const rubric = {
+    machineGates: machineGatesScore,
+    security: Math.max(0, 100 - (highIssues * 20)),
+    correctness: Math.max(0, 100 - (medIssues * 15)),
+    architecture: Math.max(0, 100 - (highIssues * 10 + medIssues * 5)),
+    standards: machineGatesScore < 100 ? 75 : 95
+  };
+
+  return { score, rubric };
+}
+
 // --- Main Runner ---
 async function main() {
   banner();
@@ -341,7 +440,22 @@ async function main() {
   const gateResults = runMachineGates(targetDir);
 
   if (gatesOnly) {
-    console.log(`\n${color.green}Gates check finished (--gates-only). Exiting.${color.reset}`);
+    const { score, rubric } = calculateScores(gateResults, []);
+    const html = generateDashboardHtml({
+      project: basename(targetDir),
+      score,
+      gates: gateResults,
+      lenses: FALLBACK_LENSES,
+      findings: [],
+      priorities: [],
+      verdict: `بررسی گیت‌های ماشینی انجام شد (${gateResults.filter(g => g.ok).length} از ${gateResults.length} موفق).`,
+      rubric
+    });
+    const htmlPath = join(outputDir, 'index.html');
+    writeFileSync(htmlPath, html, 'utf-8');
+    console.log(`\n${color.green}Dashboard generated: ${color.cyan}${htmlPath}${color.reset}`);
+    if (openUi) openInBrowser(htmlPath);
+    console.log(`${color.green}Gates check finished (--gates-only). Exiting.${color.reset}`);
     process.exit(0);
   }
 
@@ -351,11 +465,12 @@ async function main() {
   if (!activeProvider || agentMode) {
     console.log(`\n${color.yellow}[Harness Agent Mode Active]${color.reset}`);
     console.log(`No direct LLM API keys detected or --agent-mode specified.`);
-    console.log(`Generating tournament manifests for your host AI agent (Claude Code / Cursor / Windsurf / ZCode)...\n`);
+    console.log(`Generating tournament manifests and interactive UI for your host AI agent...\n`);
 
     const docsContext = extractDocsContext(targetDir);
     const manifestPath = join(outputDir, 'tournament-manifest.json');
     const promptPath = join(outputDir, 'agent-instructions.md');
+    const htmlPath = join(outputDir, 'index.html');
 
     const manifest = {
       project: basename(targetDir),
@@ -384,16 +499,32 @@ For each lens, review the code and report findings with:
 Hand each candidate finding to a separate fresh subagent/prompt to independently verify or reject it.
 
 ## Step 4: Principal Judge & Final Report
-Produce a markdown report in \`${join(outputDir, 'REPORT.md')}\` with prioritized issues.
+Produce a markdown report in \`${join(outputDir, 'REPORT.md')}\` and update \`${htmlPath}\`.
 `;
 
     writeFileSync(promptPath, instructions, 'utf-8');
 
-    console.log(`${color.green}✓ Tournament manifests written:${color.reset}`);
-    console.log(`  - Manifest:    ${manifestPath}`);
-    console.log(`  - Instructions: ${promptPath}`);
+    const { score, rubric } = calculateScores(gateResults, []);
+    const initialHtml = generateDashboardHtml({
+      project: basename(targetDir),
+      score,
+      gates: gateResults,
+      lenses: FALLBACK_LENSES,
+      findings: [],
+      priorities: [],
+      verdict: 'ممیزی در حال آماده‌سازی برای اجرا توسط دستیار هوش مصنوعی است.',
+      rubric
+    });
+    writeFileSync(htmlPath, initialHtml, 'utf-8');
+
+    console.log(`${color.green}✓ Tournament manifests and dashboard written:${color.reset}`);
+    console.log(`  - Interactive UI: ${color.cyan}${htmlPath}${color.reset}`);
+    console.log(`  - Manifest:       ${manifestPath}`);
+    console.log(`  - Instructions:   ${promptPath}`);
     console.log(`\n${color.bold}How to proceed in your current AI Assistant:${color.reset}`);
     console.log(`  Tell your assistant: "Read ${promptPath} and perform the multi-agent tournament audit."\n`);
+
+    if (openUi) openInBrowser(htmlPath);
     return;
   }
 
@@ -502,6 +633,7 @@ Output strict JSON:
   // Phase 5: Principal Judge
   console.log(`\n${color.bold}[Phase 5] ⚖️  Principal Judge Report Synthesis...${color.reset}`);
   let judgeSummary = "Audit completed.";
+  let priorities = [];
   try {
     const judgePrompt = `You are the Principal Judge. Synthesize the findings below into an executive verdict and top priorities:
 Machine Gates:
@@ -512,21 +644,26 @@ ${JSON.stringify(verifiedFindings)}
 
 Output strict JSON:
 {
-  "verdict": "2-3 sentences executive summary",
+  "verdict": "2-3 sentences executive summary in Persian",
   "priorities": [
-    { "where": "file:line", "what": "issue summary", "severity": "high|medium|low" }
+    { "where": "file:line", "what": "issue summary in Persian", "severity": "high|medium|low" }
   ]
 }`;
     const judgeText = await callLLM(activeProvider, "You are an impartial executive judge. Output only JSON.", judgePrompt);
     const parsedJudge = parseJSONFromText(judgeText);
     judgeSummary = parsedJudge.verdict || judgeSummary;
+    priorities = parsedJudge.priorities || [];
   } catch (_) {}
+
+  // Calculate Scores & Rubric
+  const { score, rubric } = calculateScores(gateResults, verifiedFindings);
 
   // Write Deliverables
   const reportPath = join(outputDir, 'REPORT.md');
   const jsonPath = join(outputDir, 'findings.json');
+  const htmlPath = join(outputDir, 'index.html');
 
-  writeFileSync(jsonPath, JSON.stringify({ gates: gateResults, findings: verifiedFindings }, null, 2), 'utf-8');
+  writeFileSync(jsonPath, JSON.stringify({ score, rubric, gates: gateResults, findings: verifiedFindings }, null, 2), 'utf-8');
 
   const md = `# Arena Tournament Codebase Audit Report
 
@@ -536,18 +673,41 @@ ${judgeSummary}
 ## 🚦 Machine Quality Gates
 ${gateResults.map(g => `- **${g.name}**: ${g.ok ? '✅ PASSED' : '❌ FAILED'}`).join('\n') || 'No machine gates tested.'}
 
+## 🎯 Top Priorities
+${priorities.map((p, i) => `${i + 1}. **\`${p.where}\`** — ${p.what} [${p.severity}]`).join('\n') || 'None recorded.'}
+
 ## 🔍 Verified Findings
 ${verifiedFindings.filter(f => f.status === 'verified').map(f => `- **[${f.severity.toUpperCase()}]** \`${f.path}\` — ${f.problem}\n  - *Evidence:* ${f.evidence}\n  - *Verifier Note:* ${f.verifierNote}`).join('\n\n') || 'No verified high-risk issues found.'}
 
-## ⚠️ Unconfirmed / Needs Review
+## ⚠️ Unconfirmed / Refuted
 ${verifiedFindings.filter(f => f.status === 'unconfirmed').map(f => `- **[${f.severity}]** \`${f.path}\` — ${f.problem}\n  - *Note:* ${f.verifierNote}`).join('\n\n') || 'None.'}
 `;
 
   writeFileSync(reportPath, md, 'utf-8');
 
+  // Render Visual Interactive HTML Dashboard
+  const html = generateDashboardHtml({
+    project: basename(targetDir),
+    score,
+    gates: gateResults,
+    lenses,
+    findings: verifiedFindings,
+    priorities,
+    verdict: judgeSummary,
+    rubric
+  });
+
+  writeFileSync(htmlPath, html, 'utf-8');
+
   console.log(`\n${color.green}${color.bold}🎉 Audit Complete!${color.reset}`);
-  console.log(`  - Markdown Report: ${color.cyan}${reportPath}${color.reset}`);
-  console.log(`  - Findings JSON:   ${color.cyan}${jsonPath}${color.reset}\n`);
+  console.log(`  - 🌐 Interactive Dashboard: ${color.cyan}${htmlPath}${color.reset}`);
+  console.log(`  - 📄 Markdown Report:       ${color.cyan}${reportPath}${color.reset}`);
+  console.log(`  - 📦 Findings JSON:         ${color.cyan}${jsonPath}${color.reset}\n`);
+
+  if (openUi) {
+    console.log(`Opening interactive dashboard in your default browser...`);
+    openInBrowser(htmlPath);
+  }
 }
 
 main().catch(err => {
