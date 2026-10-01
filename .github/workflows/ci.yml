@@ -8,11 +8,13 @@ on:
 
 jobs:
   smoke:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        node: [22]
+      # Ubuntu is the canonical CI gate (includes the true-mutation worktree
+      # suite). Windows runners hang on nested git-worktree operations.
+      runs-on: ${{ matrix.os }}
+      strategy:
+        matrix:
+          os: [ubuntu-latest]
+          node: [22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
