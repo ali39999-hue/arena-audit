@@ -177,7 +177,11 @@ beforeEach(() => {
 
 afterEach(() => { try { rmSync(mutRoot, { recursive: true, force: true }); } catch {} });
 
-test('true mutation: KILLED when the real test suite fails, with dual scores', () => {
+// True-mutation spawns git worktrees + nested node --test children — this is
+// slow/hang-prone on Windows CI runners, so the canonical gate is Ubuntu CI.
+const skipOnWindowsCI = process.platform === 'win32' && process.env.CI === 'true';
+
+test('true mutation: KILLED when the real test suite fails, with dual scores', { skip: skipOnWindowsCI }, () => {
   const report = runTrueMutationTesting({
     root: mutRoot,
     files: [{ path: 'src/calc.js' }],

@@ -1,0 +1,9 @@
+unknown shorthand flag: '1' in -12
+
+Usage:  gh run watch <run-id> [flags]
+
+Flags:
+      --compact        Show only relevant/failed steps
+      --exit-status    Exit with non-zero status if run fails
+  -i, --interval int   Refresh interval in seconds (default 3)
+  
