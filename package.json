@@ -9,7 +9,7 @@
   "type": "module",
   "scripts": {
     "start": "node bin/arena-audit.mjs",
-    "test": "node --test --test-timeout=15000 \"tests/unit/**/*.test.mjs\"",
+    "test": "node tests/run-all.mjs",
     "smoke": "node bin/arena-audit.mjs --gates-only",
     "eval": "node src/evals/run-eval.mjs",
     "matrix": "node src/evals/run-matrix.mjs",
