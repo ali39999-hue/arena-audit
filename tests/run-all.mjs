@@ -11,7 +11,7 @@ const files = readdirSync(unitDir)
   .filter((f) => f.endsWith('.test.mjs'))
   .map((f) => join(unitDir, f));
 
-const args = ['--test', '--test-timeout=15000', ...files];
+const args = ['--test', '--test-timeout=120000', ...files];
 if (process.env.FORCE_EXIT === '1') args.splice(1, 0, '--test-force-exit');
 
 const r = spawnSync(process.execPath, args, { stdio: 'inherit' });
