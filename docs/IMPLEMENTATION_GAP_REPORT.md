@@ -1,8 +1,44 @@
-# Arena Audit — Implementation Gap Report (Dynamic Workflow Phase)
+# Arena Audit — Implementation Gap Report (v3.2 Truth Reset)
 
-> Generated per STEP 1 of the Master Implementation Prompt.
-> Method: every claimed capability was verified against implementation + tests
-> (`npm test` — 120/120 passing at audit time). README claims were NOT trusted blindly.
+> Updated for the v3.1→v4.0 roadmap. Statuses use the five-level taxonomy
+> (IMPLEMENTED / IMPLEMENTED-BUT-UNVERIFIED / EXPERIMENTAL / PLANNED / DEPRECATED)
+> and are maintained in [`src/core/capability-status.mjs`](../src/core/capability-status.mjs)
+> — the machine-checkable single source of truth, enforced by `npm run check-docs` in CI.
+
+## v3.2 — Truth & Trust changes
+
+- **P0 Truth Reset:** capability status registry added; README version line and
+  evidence paths machine-checked; release manifest + per-run reproducibility
+  manifest (configHash) generated.
+- **P1 Evidence:** dedupe, redaction hook, integrity self-test, import/export;
+  **path-escape rejected** (`../` refs → `path_escape`, can never verify).
+- **P2 Verification:** `reproduced` / `not_reproduced` are first-class finding
+  states; independent verification & refutation benchmark (`src/verification/benchmark.mjs`)
+  observes verifier decisions directly — NOT derived from precision.
+- **P7 True Mutation:** `src/evals/mutation-true.mjs` runs each mutant in an
+  isolated worktree against the project's REAL test suite
+  (KILLED/SURVIVED/INVALID/TIMEOUT) and reports BOTH
+  `testMutationScore` and `arenaDetectionScore`.
+- **P8 Sandbox:** snapshot workspaces (read-only copy, symlinks skipped,
+  node_modules excluded) for untrusted execution; escape fixtures tested.
+
+## Honest remaining gaps (v3.3+)
+
+| Capability | Status | Blocker |
+| :--- | :--- | :--- |
+| Real-provider model matrix (P5-14/15) | EXPERIMENTAL | Requires real API keys + budget; current runs are mock-based and marked as such |
+| Data-flow / taint / auth-boundary analysis (P3-12..15) | PLANNED | Requires CodeQL/Joern-class analysis |
+| PostgreSQL live integration (DB phase) | IMPLEMENTED-BUT-UNVERIFIED | Needs a real instance for migrations/pool/load |
+| OIDC/JWKS signature verification (E-04/05) | IMPLEMENTED-BUT-UNVERIFIED | Needs a real IdP; claims-only parsing is not authentication |
+| Black-box tenant-leak fuzz suite (P11) | PLANNED | Requires the API surface deployed |
+| Load / soak / recovery certification (R8) | PLANNED | Requires production-like infrastructure |
+
+Per the roadmap rule, no capability above is certified beyond what its
+evidence supports.
+
+---
+
+# Historical gap report (v3.2 pre-reset) — kept for provenance
 
 ## Verification Summary
 

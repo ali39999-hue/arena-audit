@@ -1,7 +1,10 @@
-# 🛡️ Arena Audit v2 (`/arena-audit`)
+# 🛡️ Arena Audit v3.2 (`/arena-audit`)
 
-> **Evidence-Anchored Multi-Agent Tournament Codebase Auditor**  
+> **Evidence-Anchored Multi-Agent Tournament Codebase Auditor + Dynamic Workflow Runtime**  
 > Every claim is challenged, every finding is anchored to a hashed code excerpt, every gate is a real process exit code. Runs in **any AI harness**: ZCode, Claude Code, Cursor, Windsurf, CI/CD, or plain terminal.
+>
+> Current version: **3.2.0** (single source of truth: `package.json` — verified by `npm run check-docs`)  
+> Capability statuses are generated from [`src/core/capability-status.mjs`](src/core/capability-status.mjs), not asserted by hand.
 
 ---
 

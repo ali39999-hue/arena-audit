@@ -10,7 +10,14 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve, join, sep } from 'node:path';
+
+/** Containment guard (P8-14): a ref must resolve INSIDE the audited root. */
+export function isInsideRoot(root, candidatePath) {
+  const rootAbs = resolve(root);
+  const full = resolve(rootAbs, candidatePath);
+  return full === rootAbs || full.startsWith(rootAbs + sep);
+}
 
 /** P2-03 — Content hashing. */
 export function sha256(text) {
@@ -35,6 +42,10 @@ export function locateSource(root, ref, { contextLines = 4 } = {}) {
   // invalid anchors — a finding citing them can never be "verified".
   if (startLine !== null && (startLine < 1 || (endLine !== null && endLine < startLine))) {
     return { status: 'invalid_line', file, startLine, endLine };
+  }
+  // Path containment (P8-14): '../' escapes and absolute refs are rejected.
+  if (!isInsideRoot(root, file)) {
+    return { status: 'path_escape', file, startLine, endLine };
   }
   const full = resolve(root, file);
   if (!existsSync(full)) {
@@ -147,6 +158,57 @@ export class EvidenceStore {
   }
 
   get(id) { return this.map.get(id); }
+
+  // ── P1 hardening: dedupe, redaction, integrity self-test, import/export ──
+
+  /** Remove exact duplicate records (same type + path + lines + hash). */
+  dedupe() {
+    const seen = new Map();
+    let removed = 0;
+    for (const [id, ev] of [...this.map.entries()]) {
+      const key = `${ev.type}|${ev.path || ''}|${ev.startLine || ''}|${ev.endLine || ''}|${ev.contentHash || ''}`;
+      if (seen.has(key)) { this.map.delete(id); removed++; }
+      else seen.set(key, id);
+    }
+    return removed;
+  }
+
+  /** Apply redaction rules to excerpts/outputs (P1-12). */
+  redact(ruleFn) {
+    for (const ev of this.map.values()) {
+      if (ev.excerpt) ev.excerpt = ruleFn(ev.excerpt);
+      if (ev.output) ev.output = ruleFn(ev.output);
+    }
+    return this.map.size;
+  }
+
+  /** Integrity self-test (P1-08): recompute hashes; stale or missing = broken. */
+  integritySelfTest() {
+    const checked = [];
+    const broken = [];
+    for (const ev of this.map.values()) {
+      if (ev.type !== 'source') continue;
+      checked.push(ev.id);
+      if (isStale(this.root, ev)) broken.push(ev.id);
+    }
+    return { checked: checked.length, broken, ok: broken.length === 0 };
+  }
+
+  /** Export all records (P1-09). */
+  exportRecords() {
+    return [...this.map.values()];
+  }
+
+  /** Import records (P1-09): merges by id, recomputes nothing — trusted input must be hash-verified later. */
+  importRecords(records = []) {
+    let merged = 0;
+    for (const r of records) {
+      if (!r?.id || !r?.type) continue;
+      if (!this.map.has(r.id)) { this.map.set(r.id, r); merged++; }
+    }
+    return merged;
+  }
+
 
   /** Resolve evidenceRefs → evidence objects for a verifier context (P2-06). */
   resolve(refs) {

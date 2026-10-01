@@ -21,6 +21,8 @@ jobs:
           cache: npm
       - name: Install dependencies (web-tree-sitter + wasm grammars)
         run: npm ci
+      - name: Documentation consistency gate (P0-07)
+        run: npm run check-docs
       - name: Unit tests (zero dependencies)
         run: npm test
       - name: Evaluation Lab — seeded detector benchmark (P10 gate)

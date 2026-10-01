@@ -1,6 +1,6 @@
 {
   "name": "arena-audit",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Enterprise-grade evidence-anchored software assurance platform for any AI harness (Claude Code, Cursor, Windsurf, ZCode, CI/CD)",
   "main": "bin/arena-audit.mjs",
   "bin": {
@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node bin/arena-audit.mjs",
     "test": "node tests/run-all.mjs",
+    "check-docs": "node src/core/doc-check.mjs",
     "smoke": "node bin/arena-audit.mjs --gates-only",
     "eval": "node src/evals/run-eval.mjs",
     "matrix": "node src/evals/run-matrix.mjs",

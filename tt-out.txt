@@ -1,0 +1,64 @@
+✔ capability registry: statuses valid, counts consistent, no duplicate ids (223.5259ms)
+✔ doc consistency gate passes on the real repo (no drift) (157.235ms)
+✔ doc consistency gate catches drift (version mismatch + missing evidence) (192.6508ms)
+✔ release manifest: counts + reproducibility manifest hash stability (180.8616ms)
+✔ evidence path-escape: ../ and traversal refs are rejected (P8-14) (164.7355ms)
+✔ evidence dedupe removes exact duplicates only (150.8165ms)
+✔ evidence redaction rewrites excerpt content (180.8227ms)
+✔ evidence integrity self-test detects stale records (151.488ms)
+✔ evidence export/import roundtrip merges by id (205.3543ms)
+✔ verification benchmark: observed accuracy + refutation (not derived) (154.5616ms)
+✔ verification benchmark catches an over-accepting verifier (bad refutation) (160.4395ms)
+✖ true mutation: KILLED when the real test suite fails, with dual scores (475.9253ms)
+✔ true mutation outside git reports unavailable honestly (191.6666ms)
+✔ snapshot workspace copies sources, skips node_modules and symlinks (177.6261ms)
+✔ snapshot path containment rejects escapes (160.5101ms)
+node:internal/modules/esm/get_format:236
+  throw new ERR_UNKNOWN_FILE_EXTENSION(ext, filepath);
+        ^
+
+TypeError [ERR_UNKNOWN_FILE_EXTENSION]: Unknown file extension ".txt" for C:\Users\Lenovo\arena-audit\tt-out.txt
+    at Object.getFileProtocolModuleFormat [as file:] (node:internal/modules/esm/get_format:236:9)
+    at defaultGetFormat (node:internal/modules/esm/get_format:262:36)
+    at defaultLoadSync (node:internal/modules/esm/load:161:16)
+    at #loadAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:802:12)
+    at #loadSync (node:internal/modules/esm/loader:834:53)
+    at ModuleLoader.load (node:internal/modules/esm/loader:783:26)
+    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:494:31)
+    at #getOrCreateModuleJobAfterResolve (node:internal/modules/esm/loader:560:36)
+    at afterResolve (node:internal/modules/esm/loader:607:52)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:613:12) {
+  code: 'ERR_UNKNOWN_FILE_EXTENSION'
+}
+
+Node.js v24.18.0
+✖ tt-out.txt (43.3005ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 14
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3004.7557
+
+✖ failing tests:
+
+test at tests\unit\truth-trust.test.mjs:180:1
+✖ true mutation: KILLED when the real test suite fails, with dual scores (475.9253ms)
+  AssertionError [ERR_ASSERTION]: test mutation score 0 — results: [{"op":"condition_inverted","cls":"SURVIVED","test":"passed"},{"op":"return_changed","cls":"SURVIVED","test":"passed"}]
+      at TestContext.<anonymous> (file:///C:/Users/Lenovo/arena-audit/tests/unit/truth-trust.test.mjs:193:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tt-out.txt:1:1
+✖ tt-out.txt (43.3005ms)
+  'test failed'

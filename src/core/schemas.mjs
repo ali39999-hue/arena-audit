@@ -18,6 +18,8 @@ export const FINDING_STATUSES = [
   'refuted',         // independent verifier rejected it against the actual code
   'inconclusive',    // verifier could not decide (needs human review)
   'stale',           // evidence hash no longer matches the file
+  'reproduced',      // per-finding reproduction succeeded (P2-04)
+  'not_reproduced',  // per-finding reproduction attempted and did not reproduce — ≠ refuted
   'fixed',
   'reopened',
   'regressed',
