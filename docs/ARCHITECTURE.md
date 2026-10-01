@@ -16,6 +16,10 @@
 │    registry + adapters: tsc · eslint · vitest · jest ·           │
 │    semgrep · gitleaks (each: detect() → run() → normalize())     │
 ├──────────────────────────────────────────────────────────────────┤
+│ 2b. Deterministic Detectors (src/detectors)      NO LLM          │
+│    8 conservative detectors → candidate findings, anchored to    │
+│    hashed excerpts; FP rate measured by the Evaluation Lab       │
+├──────────────────────────────────────────────────────────────────┤
 │ 3. Lens Planning (src/agents)                    LLM (optional)  │
 │    project docs + repo facts → 4-6 audit lenses (deterministic   │
 │    fallback if no provider)                                      │
@@ -89,15 +93,18 @@ never silently dropped.
 ## Roadmap alignment
 
 Implemented now: Phase 0 (contract/schemas), Phase 1 (repo intelligence),
-Phase 2 (evidence engine), Phase 3 (gate registry), Phase 5 (bounded parallel
-orchestrator), Phase 6 (evidence-based verification), Phase 7 (fingerprint/
-dedupe), Phase 8 (scoring 2.0), Phase 9 (sandbox: env hardening + Docker
-executor), Phase 11 (diff-aware audit), Phase 12 (dashboard/CI/SARIF/Checks/
-PR comments), Phase 13 (suggested-only remediation with worktree validation),
+Phase 2 (evidence engine), Phase 3 (gate registry), Phase 4-gate (deterministic
+detector layer — the "one finding without an LLM" gate is closed), Phase 5
+(bounded parallel orchestrator), Phase 6 (evidence-based verification),
+Phase 7 (fingerprint/dedupe), Phase 8 (scoring 2.0), Phase 9 (sandbox: env
+hardening + Docker executor), Phase 10-core (evaluation lab: seeded dataset
+generator + detector precision/recall/F1 metrics, CI-gated), Phase 11
+(diff-aware audit), Phase 12 (dashboard/CI/SARIF/Checks/PR comments), Phase 13
+(suggested-only remediation: confidence factors + human approval workflow),
 Phase 14 (baseline/regression), Phase 19 (telemetry), Phase 15-v1 (control
 plane: JSON-file store, REST API, web dashboard, CLI push — PostgreSQL is the
 documented production adapter path).
 
-Next up (per backlog): Tree-sitter AST deepening (P4-01), evaluation lab
-expansion with LLM datasets (P10-02..04), automated remediation hardening
-(P13-07/08), multi-tenancy/enterprise (P16+).
+Next up (per backlog): Tree-sitter AST deepening (P4-01), LLM-judged eval
+datasets and model matrix (P10-02..04), remediation auto-test generation,
+enterprise multi-tenancy (P16+).

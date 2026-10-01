@@ -20,6 +20,8 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Unit tests (zero dependencies)
         run: npm test
+      - name: Evaluation Lab — seeded detector benchmark (P10 gate)
+        run: npm run eval -- --generate 40 --seed 42
       - name: CLI smoke — help
         run: node bin/arena-audit.mjs --help
       - name: CLI smoke — self gates-only audit on a fixture repo

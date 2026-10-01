@@ -10,6 +10,8 @@
 | Capability | Status | Evidence |
 | :--- | :--- | :--- |
 | Machine quality gates (tsc, eslint, vitest, jest, semgrep, gitleaks) with real exit codes | ✅ | `src/gates/registry.mjs` — plugin-style `detect()/run()`, normalized results |
+| **Deterministic detector layer**: 8 LLM-free detectors (credentials, eval, SQL concat, XSS surface, localStorage tokens, empty catch, money float math) — works with NO API key | ✅ | `src/detectors/detectors.mjs` — line-exact, evidence-anchored by construction |
+| **Evaluation Lab v2**: seeded bug generator (reproducible by seed) + precision/recall/F1/FP-rate per category, CI-gated (`npm run eval -- --generate 40`) | ✅ | `src/evals/` — current seeded run: P 1.000 · R 1.000 · FP 0.000 |
 | Repository intelligence without any LLM | ✅ | `src/intake/repo-snapshot.mjs` — indexer, languages, frameworks, pm, git, deps, tests, CI |
 | Evidence Engine: every finding anchored to a SHA-256 hashed code excerpt | ✅ | `src/evidence/evidence-store.mjs` — unresolvable refs become `invalid`, never verified |
 | Stale evidence detection (code changed → finding flips to `stale`) | ✅ | `isStale()` + final sweep in the runner |

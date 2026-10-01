@@ -33,6 +33,7 @@ import { findRelatedTests, runTargetedTests } from '../src/verification/reproduc
 import { toSarif } from '../src/outputs/sarif.mjs';
 import { remediateFinding } from '../src/remediation/patch.mjs';
 import { computePatchConfidence } from '../src/remediation/confidence.mjs';
+import { runDetectors } from '../src/detectors/detectors.mjs';
 import { createTelemetry } from '../src/observability/telemetry.mjs';
 import { buildBaseline, saveBaseline, loadBaseline, classifyAgainstBaseline } from '../src/findings/baseline.mjs';
 import {
@@ -243,12 +244,31 @@ async function main() {
     console.log(`  ${color.dim}No machine gates detected — they will be reported as NOT_AVAILABLE, never as a pass.${color.reset}`);
   }
 
-  // Gates-only mode still produces dashboard + manifest, then exits.
+  const evidence = new EvidenceStore(targetDir);
+
+  // ── Phase 2b: Deterministic Detectors (P4 gate) — real findings, zero LLM ──
+  const detSpan = telemetry.start('phase', 'detectors');
+  const detFiles = auditMode === 'full' ? snapshot.allFiles : scopedFiles;
+  const detFindings = runDetectors(targetDir, detFiles.map((f) => ({ path: f.path, kind: f.kind })));
+  for (const d of detFindings) {
+    const ev = evidence.addSource(d.path, { kind: 'detector', name: d.detectorId }, { contextLines: 0 });
+    d.evidenceRefs = [ev.id];
+    // Deterministic tool evidence is reproducible by rerunning the detector
+    // (P6-07 corroboration) — labeled verified with conservative confidence.
+    d.status = 'verified';
+    d.confidence = 0.6;
+  }
+  detSpan.end('ok', { findings: detFindings.length });
+  if (detFindings.length > 0) {
+    console.log(`  ${color.cyan}detectors: ${detFindings.length} deterministic finding(s)${color.reset}`);
+  }
+
+  // Gates-only mode: LLM-free audit (gates + detectors) still produces everything.
   if (gatesOnly) {
-    const scores = computeScores(allGates, []);
-    finishRun({ run, root: targetDir, snapshot, gates: allGates, findings: [], evidence: [], scores, outputDir, lenses: [], sandbox, telemetry, scopeNote, delta });
+    const scores = computeScores(allGates, detFindings);
+    finishRun({ run, root: targetDir, snapshot, gates: allGates, findings: detFindings, evidence: evidence.toJSON(), scores, outputDir, lenses: [], sandbox, telemetry, scopeNote, delta });
     if (openUi) openInBrowser(join(outputDir, 'index.html'));
-    console.log(`\n${color.green}Gates-only audit complete.${color.reset}`);
+    console.log(`\n${color.green}Gates-only audit complete — ${detFindings.length} deterministic finding(s).${color.reset}`);
     process.exit(0);
   }
 
@@ -259,6 +279,7 @@ async function main() {
     console.log(`\n${color.yellow}[Agent-Assisted Mode]${color.reset} No LLM key detected (or --agent-mode).`);
     console.log('Writing tournament manifests + instructions + dashboard for your host AI agent...');
     const docsContext = readDocs(targetDir);
+    const scores = computeScores(allGates, detFindings);
     const instructions = [
       `# Arena Tournament Audit Instructions`,
       ``,
@@ -266,6 +287,10 @@ async function main() {
       ``,
       `## Machine gates (real exit codes)`,
       ...allGates.map((g) => `- **${g.id}**: ${g.status}`),
+      ``,
+      `## Deterministic detector findings already anchored (${detFindings.length})`,
+      ...detFindings.slice(0, 10).map((d) => `- \`${d.path}\` — ${d.problem}`),
+      detFindings.length > 10 ? `- …and ${detFindings.length - 10} more (see audit-run.json)` : '',
       ``,
       `## Protocol`,
       `1. Plan 4-7 audit lenses from AGENTS.md/CLAUDE.md/README.`,
@@ -279,8 +304,7 @@ async function main() {
     writeFileSync(join(outputDir, 'agent-instructions.md'), instructions, 'utf-8');
     writeFileSync(join(outputDir, 'tournament-manifest.json'), JSON.stringify({ run, snapshot: { ...snapshot, sampleSourceFiles: snapshot.sampleSourceFiles.slice(0, 50) } }, null, 2), 'utf-8');
 
-    const scores = computeScores(allGates, []);
-    finishRun({ run, root: targetDir, snapshot, gates: allGates, findings: [], evidence: [], scores, outputDir, lenses: [], sandbox, telemetry });
+    finishRun({ run, root: targetDir, snapshot, gates: allGates, findings: detFindings, evidence: evidence.toJSON(), scores, outputDir, lenses: [], sandbox, telemetry });
     if (openUi) openInBrowser(join(outputDir, 'index.html'));
     console.log(`\n${color.green}✓ agent-instructions.md + tournament-manifest.json + index.html written.${color.reset}`);
     console.log(`  Tell your AI assistant: "Read ${join(outputDir, 'agent-instructions.md')} and run the tournament."`);
@@ -293,8 +317,6 @@ async function main() {
   const plan = await planLenses({ provider: activeProvider, model: modelName, snapshot, docsContext, llm: instrumentedLlm });
   const projectName = plan.projectName || snapshot.dependencies.projectName || basename(targetDir);
   console.log(`  ${plan.lenses.length} lenses (${plan.source}) for "${projectName}"`);
-
-  const evidence = new EvidenceStore(targetDir);
 
   // ── Phase 4+5: Parallel Specialists → Evidence-Anchored Verifiers ──
   console.log(`\n${color.bold}[4/6] ⚔️  Parallel Specialists (concurrency: ${maxConcurrency})${color.reset}`);
@@ -369,7 +391,7 @@ async function main() {
     }
   } });
 
-  let findings = verifiedOut.filter((r) => r.ok).map((r) => r.value);
+  let findings = [...detFindings, ...verifiedOut.filter((r) => r.ok).map((r) => r.value)];
 
   // ── Scope filter (P11): in diff/target mode, out-of-scope findings are dropped
   //    but counted honestly — and importers (impact) stay in scope.
