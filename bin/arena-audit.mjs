@@ -14,8 +14,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { resolve, join, basename } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve, join, basename } from 'node:path';import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
 import { createAuditRun, validateFinding } from '../src/core/schemas.mjs';
@@ -33,6 +32,7 @@ import { scopeFiles, gitDiffText } from '../src/git/delta.mjs';
 import { findRelatedTests, runTargetedTests } from '../src/verification/reproduce.mjs';
 import { toSarif } from '../src/outputs/sarif.mjs';
 import { remediateFinding } from '../src/remediation/patch.mjs';
+import { computePatchConfidence } from '../src/remediation/confidence.mjs';
 import { createTelemetry } from '../src/observability/telemetry.mjs';
 import { buildBaseline, saveBaseline, loadBaseline, classifyAgainstBaseline } from '../src/findings/baseline.mjs';
 import {
@@ -134,7 +134,12 @@ if (!outputDir) outputDir = resolve(targetDir, 'arena-audit-out');
 
 function printHelp() {
   console.log(`
-Usage: npx arena-audit [path] [options]
+Usage:
+  npx arena-audit [path] [options]            run an audit
+  npx arena-audit serve [--port] [--store]    start the control plane
+  npx arena-audit patches [--out dir]         list suggested patches + approval state
+  npx arena-audit approve <id> [--out dir] [--approver n] [--force]
+  npx arena-audit reject <id> [--out dir] [--reason text]
 
 Arguments:
   path                    Directory to audit (default: current directory)
@@ -464,11 +469,15 @@ async function main() {
           fileContent, testFiles, projectName,
         });
         remediation.push(record);
+        record.confidence = computePatchConfidence(record);
         f.patchId = record.id;
         const icon = record.status === 'validated' ? `${color.green}validated ✓${color.reset}`
           : record.status === 'test_failed' ? `${color.yellow}test_failed${color.reset}`
           : `${color.red}${record.status}${color.reset}`;
-        console.log(`  ${icon} ${record.id} → ${file}`);
+        console.log(`  ${icon} ${record.id} → ${file} · confidence ${record.confidence.confidence}${record.confidence.recommended ? ' (recommended)' : ' (NOT recommended)'}`);
+        for (const factor of record.confidence.factors) {
+          console.log(`      ${factor.met ? '✓' : '✗'} ${factor.key} (w=${factor.weight}) — ${factor.detail}`);
+        }
       }
     }
   }
@@ -684,10 +693,55 @@ ${baselineSummary.mode === 'compared'
 `;
 }
 
+// ── Patch governance subcommands (P13-08) ──
+async function patchesMain(cmd, argv) {
+  const { listPatches, approvePatch, rejectPatch } = await import('../src/remediation/approval.mjs');
+  let outDir = resolve(process.cwd(), 'arena-audit-out');
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--out') outDir = resolve(process.cwd(), argv[++i]);
+  }
+  const colorize = (s) => s; // subcommands may run non-TTY; plain output is fine
+
+  if (cmd === 'patches') {
+    const patches = listPatches(outDir);
+    if (!patches.length) { console.log(`No patches in ${outDir} — run an audit with --remediate first.`); return; }
+    for (const p of patches) {
+      const conf = p.confidence?.confidence ?? '?';
+      const rec = p.confidence?.recommended ? '[recommended]' : '[not recommended]';
+      const appr = p.approval ? `${p.approval.status}${p.approval.forced ? ' (forced)' : ''} by ${p.approval.approver}` : 'pending';
+      console.log(`${p.id}  conf=${conf} ${rec}  status=${p.status}  approval=${appr}`);
+      console.log(`   file: ${p.path} · apply manually with: git apply ${join(outDir, 'patches', p.id + '.diff')}`);
+    }
+    return;
+  }
+
+  const id = argv.find((a) => !a.startsWith('-'));
+  if (!id) { console.error(`Usage: arena-audit ${cmd} <patchId> [--out dir] ${cmd === 'approve' ? '[--approver name] [--force]' : '[--reason text]'}`); process.exit(1); }
+  const get = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
+
+  try {
+    if (cmd === 'approve') {
+      const res = approvePatch(outDir, id, { approver: get('--approver') || process.env.USER || process.env.USERNAME || 'unknown', force: argv.includes('--force') });
+      if (res.blocked) { console.error(`⛔ ${res.warning}`); process.exit(1); }
+      console.log(`✅ Patch ${id} approved${res.warning ? ` (${res.warning})` : ''}.`);
+      console.log(`   A human applies it deliberately: git apply ${join(outDir, 'patches', id + '.diff')}`);
+    } else {
+      const patch = rejectPatch(outDir, id, { reason: get('--reason') || 'no reason given', approver: get('--approver') || 'unknown' });
+      console.log(`🗑️  Patch ${id} rejected (${patch.approval.reason}).`);
+    }
+  } catch (e) {
+    console.error(`Error: ${e.message}`);
+    process.exit(1);
+  }
+}
+
 // ── Entry point: serve subcommand vs. audit run (after all declarations) ──
 const argsAll = process.argv.slice(2);
-if (argsAll[0] === 'serve') {
+const command = argsAll[0];
+if (command === 'serve') {
   serveMain(argsAll.slice(1)).catch((e) => { console.error(`Fatal: ${e.message}`); process.exit(1); });
+} else if (command === 'patches' || command === 'approve' || command === 'reject') {
+  patchesMain(command, argsAll.slice(1)).catch((e) => { console.error(`Fatal: ${e.message}`); process.exit(1); });
 } else {
   main().catch((err) => {
     console.error(`\n${color.red}Fatal: ${err.message}${color.reset}`);

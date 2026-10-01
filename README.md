@@ -20,6 +20,8 @@
 | Sandbox: secrets stripped from child envs; untrusted repos refused without explicit trust | ✅ | `src/sandbox/policy.mjs` |
 | **Docker sandbox executor**: network=none, read-only base FS, CPU/RAM/PID quotas, non-root, zero secrets (`--sandbox docker`) | ✅ | `src/sandbox/docker.mjs` — pure args builder, unit-tested |
 | Remediation engine: **suggested** patches for verified findings, validated in an isolated git worktree with targeted tests — never auto-applied (`--remediate`) | ✅ | `src/remediation/patch.mjs` — `rejected`/`test_failed` are labeled states |
+| Patch confidence: deterministic weighted factors (apply-clean, tests-passed, minimal-scope, evidence-aligned) — failed tests block "recommended" | ✅ | `src/remediation/confidence.mjs` |
+| Human approval workflow: `patches` / `approve <id>` / `reject <id>` with audit-style who/when records; below-bar approvals blocked until `--force` | ✅ | `src/remediation/approval.mjs` |
 | Baseline / regression intelligence: `--save-baseline` + `--baseline` classify findings as new/known/fixed; CI gates on **new** only | ✅ | `src/findings/baseline.mjs` |
 | GitHub integration: Check Run + idempotent PR comment via `--github` (conclusion policy: known debt never blocks) | ✅ | `src/integrations/github.mjs` — pure payload builders, unit-tested |
 | Observability: run-level trace with spans per gate/agent/LLM call → `telemetry.json` (honest cost note) | ✅ | `src/observability/telemetry.mjs` |
@@ -44,14 +46,21 @@
 --sandbox untrusted  # refuses tool execution unless ARENA_TRUST_REPO=1
 ```
 
-### Remediation (suggested patches)
+### Remediation (suggested patches + human approval)
 
 ```bash
 npx arena-audit --diff --remediate --ui
 # → arena-out/patches/<id>.diff  +  arena-out/remediation.json
 # Every patch: generated → git apply --check → applied in an isolated HEAD worktree
-# → targeted tests run there → labeled validated / test_failed / rejected.
-# Nothing is ever applied to your working tree automatically.
+# → targeted tests run there → confidence factors printed (apply-clean 0.4,
+#   tests-passed 0.3, minimal-scope 0.15, evidence-aligned 0.15).
+
+npx arena-audit patches                     # list patches + confidence + approval state
+npx arena-audit approve <id> --approver ali # records who/when; blocked below the bar unless --force
+npx arena-audit reject <id> --reason "..."
+
+# The engine NEVER applies a patch. After approval, a human deliberately runs:
+git apply arena-audit-out/patches/<id>.diff
 ```
 
 ## ⚔️ vs. `arena-skill` (original)

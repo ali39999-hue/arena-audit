@@ -67,7 +67,12 @@ verified finding (with hashed evidence)
    → git apply --check → git apply
    → targeted tests inside the worktree
    → labeled: validated | test_failed | rejected | skipped_no_git
+   → confidence: weighted deterministic factors
+       (applies_cleanly .40 · tests_passed .30 · minimal_scope .15 · evidence_aligned .15)
+       "recommended" requires applies + tests passed + score ≥ 0.70
    → patches/<id>.diff + remediation.json (never auto-applied)
+   → human approval: approve (who/when/forced-flag) or reject (reason)
+   → a human deliberately runs `git apply` themselves
 ```
 
 Honest scope: worktrees check out HEAD, so validation runs against the
