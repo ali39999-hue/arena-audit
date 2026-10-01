@@ -23,6 +23,8 @@
 | Baseline / regression intelligence: `--save-baseline` + `--baseline` classify findings as new/known/fixed; CI gates on **new** only | ✅ | `src/findings/baseline.mjs` |
 | GitHub integration: Check Run + idempotent PR comment via `--github` (conclusion policy: known debt never blocks) | ✅ | `src/integrations/github.mjs` — pure payload builders, unit-tested |
 | Observability: run-level trace with spans per gate/agent/LLM call → `telemetry.json` (honest cost note) | ✅ | `src/observability/telemetry.mjs` |
+| **Control Plane (P15 v1)**: API server (ingest, findings query, triage, trends) + web dashboard, zero deps | ✅ | `node bin/arena-audit.mjs serve` — loopback by default, Bearer auth, public bind refused without token |
+| CLI push: `--push <url>` ingests a run into a control plane (idempotent by runId) | ✅ | `bin/arena-audit.mjs` |
 | Versioned audit contract (`audit-run.json`: runId, engine, model, commit, schema) | ✅ | `src/core/schemas.mjs` |
 | Semantic layer without dependencies: symbol index, import graph, `findSymbol/findReferences/importedBy/impactOf` | ✅ | `src/semantic/symbols.mjs` — line-exact, evidence-anchorable |
 | Diff-aware audit: `--diff [ref]` (PR mode) and `--target <path>` with honest scope accounting | ✅ | `src/git/delta.mjs` — findings outside scope dropped & counted |
@@ -117,6 +119,26 @@ Then `/arena-audit`.
 | `report.sarif` | SARIF 2.1.0 for GitHub Advanced Security / GitLab / IDE integration |
 | `findings.json` | Machine-readable scores + findings |
 | `REPORT.md` | Executive verdict, priorities, verified/refuted/inconclusive breakdown, explicit not-covered section |
+
+### Control Plane (P15 v1)
+
+```bash
+# Start the control plane (loopback, no token needed):
+npx arena-audit serve
+# Dashboard: http://localhost:7788/   ·   API: http://localhost:7788/api/health
+
+# Public/hosted mode requires a token (refuses otherwise):
+ARENA_API_TOKEN=sekrit npx arena-audit serve --host 0.0.0.0 --port 7788
+
+# Push any audit run into the plane (idempotent by runId):
+npx arena-audit --diff --ui --push http://localhost:7788
+```
+
+API surface: `POST /api/ingest` · `GET/POST /api/projects` · `GET /api/projects/:id/runs` · `GET /api/projects/:id/trends` · `GET /api/runs/:id` · `GET /api/findings?projectId=&status=&severity=&baselineState=` · `POST /api/findings/:id/resolve` (fixed | accepted_risk | false_positive | reopened | regressed) · `GET /api/health`
+
+> Production scope note: the default store is a single JSON file for a local,
+> single-process control plane. The store sits behind a narrow interface so a
+> PostgreSQL adapter (P15-02, production) can replace it without touching the API.
 
 ## 🧪 Development
 

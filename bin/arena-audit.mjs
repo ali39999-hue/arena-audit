@@ -40,6 +40,28 @@ import {
   createCheckRun, upsertPrComment, prNumberFromEnv,
 } from '../src/integrations/github.mjs';
 
+// ── Control Plane subcommand (P15) ──
+async function serveMain(argv) {
+  const { JsonStore } = await import('../src/server/store.mjs');
+  const { createControlPlane } = await import('../src/server/api.mjs');
+  const { dashboardHtml } = await import('../src/server/dashboard.mjs');
+  let port = 7788, host = '127.0.0.1', storePath = resolve(process.cwd(), 'arena-control-plane.json');
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--port') port = parseInt(argv[++i], 10) || 7788;
+    else if (argv[i] === '--store') storePath = resolve(process.cwd(), argv[++i]);
+    else if (argv[i] === '--host') host = argv[++i];
+  }
+  const token = process.env.ARENA_API_TOKEN || null;
+  const store = new JsonStore(storePath);
+  const server = await createControlPlane(store, { token, host, port, dashboard: dashboardHtml() });
+  const addr = server.address();
+  console.log(`🛡️  Arena Control Plane`);
+  console.log(`  API:       http://${addr.address === '::' ? 'localhost' : addr.address}:${addr.port}/api/health`);
+  console.log(`  Dashboard: http://localhost:${addr.port}/`);
+  console.log(`  Store:     ${storePath}`);
+  console.log(`  Auth:      ${token ? 'Bearer token required' : 'none (loopback-only bind)'}`);
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
 const ENGINE_VERSION = pkg.version || '2.0.0';
@@ -62,7 +84,7 @@ ${color.cyan}${color.bold}╔═════════════════
 }
 
 // --- CLI ---
-const args = process.argv.slice(2);
+const args = process.argv.slice(2).filter((a) => a !== 'serve');
 let targetDir = process.cwd();
 let outputDir = null;
 let gatesOnly = false;
@@ -75,6 +97,7 @@ let doRemediate = false;
 let saveBaselineFlag = false;
 let baselinePath = null;
 let githubFlag = false;
+let pushUrl = null;
 let maxConcurrency = 4;
 let sandbox = 'trusted';
 let provider = process.env.ARENA_PROVIDER || null;
@@ -95,6 +118,7 @@ for (let i = 0; i < args.length; i++) {
     baselinePath = args[i + 1] && !args[i + 1].startsWith('-') ? resolve(process.cwd(), args[++i]) : resolve(targetDir, 'arena-baseline.json');
   }
   else if (arg === '--github') githubFlag = true;
+  else if (arg === '--push') pushUrl = args[++i];
   else if (arg === '--sandbox') {
     const val = args[++i];
     sandbox = ['trusted', 'untrusted', 'docker'].includes(val) ? val : 'trusted';
@@ -125,6 +149,7 @@ Options:
   --save-baseline         Write arena-baseline.json from this run's verified/inconclusive findings
   --baseline [path]       Compare against a baseline: findings labeled new/known; fixed fingerprints reported
   --github                Post GitHub Check Run + idempotent PR comment (needs GITHUB_TOKEN, GITHUB_REPOSITORY)
+  --push <url>            Ingest this run into an Arena Control Plane (POST /api/ingest)
   --ui, --open            Open the interactive HTML dashboard in the browser
   --sandbox <mode>        trusted (default) | untrusted (refuses tool execution)
   -c, --concurrency <n>   Max parallel specialist agents (default 4)
@@ -498,6 +523,31 @@ async function main() {
   console.log(`  📄 Report:      ${color.cyan}${join(outputDir, 'REPORT.md')}${color.reset}`);
   console.log(`  📦 Manifest:    ${color.cyan}${join(outputDir, 'audit-run.json')}${color.reset}`);
 
+  // ── Control Plane push (P15) ──
+  if (pushUrl) {
+    try {
+      const resp = await fetch(pushUrl.replace(/\/$/, '') + '/api/ingest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(process.env.ARENA_API_TOKEN ? { Authorization: `Bearer ${process.env.ARENA_API_TOKEN}` } : {}),
+        },
+        body: JSON.stringify({
+          project: { name: projectName || run.repository, repository: snapshot.git?.remoteUrl || null },
+          audit: {
+            run, gates: allGates, findings,
+            scores, lensSummary: lenses.map((l) => ({ id: l.id, title: l.title })),
+          },
+        }),
+      });
+      const out = await resp.json();
+      if (!resp.ok) throw new Error(out.error || resp.status);
+      console.log(`  ☁️ Pushed to control plane: run ${out.runId} (${out.findingsIngested} findings${out.created ? '' : ', duplicate'})`);
+    } catch (e) {
+      console.log(`  ${color.yellow}Control plane push failed: ${e.message}${color.reset}`);
+    }
+  }
+
   if (openUi) openInBrowser(join(outputDir, 'index.html'));
 }
 
@@ -634,7 +684,14 @@ ${baselineSummary.mode === 'compared'
 `;
 }
 
-main().catch((err) => {
-  console.error(`\n${color.red}Fatal: ${err.message}${color.reset}`);
-  process.exit(1);
-});
+// ── Entry point: serve subcommand vs. audit run (after all declarations) ──
+const argsAll = process.argv.slice(2);
+if (argsAll[0] === 'serve') {
+  serveMain(argsAll.slice(1)).catch((e) => { console.error(`Fatal: ${e.message}`); process.exit(1); });
+} else {
+  main().catch((err) => {
+    console.error(`\n${color.red}Fatal: ${err.message}${color.reset}`);
+    process.exit(1);
+  });
+}
+

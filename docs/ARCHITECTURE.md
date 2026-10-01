@@ -87,9 +87,12 @@ Implemented now: Phase 0 (contract/schemas), Phase 1 (repo intelligence),
 Phase 2 (evidence engine), Phase 3 (gate registry), Phase 5 (bounded parallel
 orchestrator), Phase 6 (evidence-based verification), Phase 7 (fingerprint/
 dedupe), Phase 8 (scoring 2.0), Phase 9 (sandbox: env hardening + Docker
-executor), Phase 11 (diff-aware audit), Phase 12-partial (dashboard/CI/SARIF),
-Phase 13 (suggested-only remediation with worktree validation).
+executor), Phase 11 (diff-aware audit), Phase 12 (dashboard/CI/SARIF/Checks/
+PR comments), Phase 13 (suggested-only remediation with worktree validation),
+Phase 14 (baseline/regression), Phase 19 (telemetry), Phase 15-v1 (control
+plane: JSON-file store, REST API, web dashboard, CLI push — PostgreSQL is the
+documented production adapter path).
 
-Next up (per backlog): AST/semantic deepening (Tree-sitter, P4-01),
-reproduction-generated tests, evaluation lab expansion (LLM datasets,
-P10-02..04), GitHub Checks/PR comments (P12-02..04), control plane (P15+).
+Next up (per backlog): Tree-sitter AST deepening (P4-01), evaluation lab
+expansion with LLM datasets (P10-02..04), automated remediation hardening
+(P13-07/08), multi-tenancy/enterprise (P16+).

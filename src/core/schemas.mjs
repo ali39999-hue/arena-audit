@@ -21,6 +21,8 @@ export const FINDING_STATUSES = [
   'fixed',
   'reopened',
   'regressed',
+  'accepted_risk',   // explicitly accepted by a human via the control plane
+  'false_positive',  // triaged as FP via the control plane
 ];
 
 export const SEVERITIES = ['high', 'medium', 'low'];
