@@ -33,7 +33,7 @@
 | **Control Plane (P15 v1)**: API server (ingest, findings query, triage, trends) + web dashboard, zero deps | ✅ | `node bin/arena-audit.mjs serve` — loopback by default, Bearer auth, public bind refused without token |
 | CLI push: `--push <url>` ingests a run into a control plane (idempotent by runId) | ✅ | `bin/arena-audit.mjs` |
 | Versioned audit contract (`audit-run.json`: runId, engine, model, commit, schema) | ✅ | `src/core/schemas.mjs` |
-| Semantic layer without dependencies: symbol index, import graph, `findSymbol/findReferences/importedBy/impactOf` | ✅ | `src/semantic/symbols.mjs` — line-exact, evidence-anchorable |
+| **Tree-sitter AST Semantic Intelligence**: full AST parsing for JS/TS/TSX/Python with AST cache, scope-aware caller/callee, structural queries & heuristic fallback | ✅ | `src/semantic/ast.mjs` + `src/semantic/symbols.mjs` |
 | Diff-aware audit: `--diff [ref]` (PR mode) and `--target <path>` with honest scope accounting | ✅ | `src/git/delta.mjs` — findings outside scope dropped & counted |
 | Impact analysis: changed files → transitive importers → related tests | ✅ | `semantic.impactOf()` |
 | Reproduction engine: targeted test runs for verified findings (`--reproduce`) | ✅ | `src/verification/reproduce.mjs` — `not_reproducible` is a labeled state, never a silent pass |
@@ -41,7 +41,7 @@
 | GitHub Action: diff-aware PR audit + SARIF upload | ✅ | `.github/workflows/arena-audit.yml` |
 | Evaluation Lab: deterministic evidence benchmark (`npm run eval`) | ✅ | `src/evals/` + golden fixtures — precision/recall gates in CI-able script |
 | Interactive HTML dashboard: Kanban board + rubric + filters, zero CDN, offline | ✅ | `src/dashboard.mjs` |
-| Tree-sitter full AST, mutation testing, control plane / multi-tenancy | 🚧 Planned | See `docs/ARCHITECTURE.md` roadmap alignment |
+| Mutation testing, Enterprise multi-tenancy & compliance profiles | 🚧 Planned | See `docs/ARCHITECTURE.md` roadmap alignment |
 
 ### Sandbox modes
 

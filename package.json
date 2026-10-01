@@ -1,6 +1,6 @@
 {
   "name": "arena-audit",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "Evidence-anchored multi-agent tournament codebase audit engine for any AI harness (Claude Code, Cursor, Windsurf, ZCode, CI/CD)",
   "main": "bin/arena-audit.mjs",
   "bin": {
@@ -35,5 +35,9 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.22.6"
   }
 }

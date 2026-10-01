@@ -28,6 +28,7 @@ import { dedupeFindings, computeScores } from '../src/findings/findings.mjs';
 import { sandboxPosture } from '../src/sandbox/policy.mjs';
 import { generateDashboardHtml } from '../src/dashboard.mjs';
 import { buildSymbolIndex, buildImportGraph, createSemanticQueries } from '../src/semantic/symbols.mjs';
+import { initTreeSitter } from '../src/semantic/ast.mjs';
 import { scopeFiles, gitDiffText } from '../src/git/delta.mjs';
 import { findRelatedTests, runTargetedTests } from '../src/verification/reproduce.mjs';
 import { toSarif } from '../src/outputs/sarif.mjs';
@@ -213,11 +214,13 @@ async function main() {
   console.log(`  ${snapshot.fileCount} files · langs: ${snapshot.languages.slice(0, 3).map((l) => l.language).join(', ') || 'n/a'} · tests: ${snapshot.tests.length} · pm: ${snapshot.packageManager}`);
   run.commit = snapshot.git?.head || null;
 
-  // ── Phase 1b: Semantic layer (P4) — LLM-free symbol & import graph ──
+  // ── Phase 1b: Semantic layer (P4) — AST + heuristic symbol & import graph ──
+  await initTreeSitter();
   const symIndex = buildSymbolIndex(snapshot.allFiles, targetDir);
   const importGraph = buildImportGraph(snapshot.allFiles, targetDir);
   const semantic = createSemanticQueries(symIndex, importGraph, targetDir);
-  console.log(`  semantic: ${symIndex.symbols.size} symbols indexed · ${importGraph.importers.size} files with importers`);
+  const astTag = symIndex.stats ? ` (${symIndex.stats.astParsed} AST, ${symIndex.stats.fallbackParsed} fallback)` : '';
+  console.log(`  semantic: ${symIndex.symbols.size} symbols indexed${astTag} · ${importGraph.importers.size} files with importers`);
 
   // ── Phase 1c: Audit scope (P11) — full | diff | target ──
   const auditMode = diffBase !== null || args.includes('--diff') ? 'diff' : (targetPath ? 'target' : 'full');
@@ -266,10 +269,10 @@ async function main() {
   // Gates-only mode: LLM-free audit (gates + detectors) still produces everything.
   if (gatesOnly) {
     const scores = computeScores(allGates, detFindings);
-    finishRun({ run, root: targetDir, snapshot, gates: allGates, findings: detFindings, evidence: evidence.toJSON(), scores, outputDir, lenses: [], sandbox, telemetry, scopeNote, delta });
+    finishRun({ run, root: targetDir, snapshot, gates: allGates, findings: detFindings, evidence: evidence.toJSON(), scores, outputDir, lenses: [], sandbox, telemetry, scopeNote, delta, symIndex, importGraph });
     if (openUi) openInBrowser(join(outputDir, 'index.html'));
     console.log(`\n${color.green}Gates-only audit complete — ${detFindings.length} deterministic finding(s).${color.reset}`);
-    process.exit(0);
+    return;
   }
 
   const activeProvider = detectProvider(provider);
