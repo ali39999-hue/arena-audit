@@ -38,20 +38,27 @@ export function sanitizeEnv(mode = 'trusted') {
 
 /**
  * Assert that the chosen sandbox policy allows executing this repo's tooling.
- * Throws for untrusted repos unless the operator explicitly vouches for them.
+ *  - trusted:  allowed (sanitized env).
+ *  - docker:   allowed (container isolation) — availability checked at exec time.
+ *  - untrusted: refused unless the operator explicitly vouches.
  */
 export function assertSandboxPolicy(root, mode = 'trusted') {
-  if (mode === 'trusted') return;
+  if (mode === 'trusted' || mode === 'docker') return;
   if (process.env.ARENA_TRUST_REPO === '1') return;
   throw new Error(
     `Refusing to execute repo tooling in untrusted mode for ${root}. ` +
-    'Sandboxed (Docker) execution is not available in this build. ' +
-    'If you own this repository, rerun with --sandbox trusted or set ARENA_TRUST_REPO=1.',
+    'Use --sandbox docker (isolated container) or --sandbox trusted if you own this repository ' +
+    '(or set ARENA_TRUST_REPO=1).',
   );
 }
 
 /** Describe the effective sandbox posture for the audit manifest. */
 export function sandboxPosture(mode = 'trusted') {
+  if (mode === 'docker') {
+    // Full detail is produced by dockerPosture() in docker.mjs; this stub
+    // keeps the manifest shape stable when Docker is requested but unprobed.
+    return { mode: 'docker', dockerIsolation: true, network: 'none', secretsInChildEnv: 'stripped' };
+  }
   return {
     mode,
     network: mode === 'trusted' ? 'allow (host network)' : 'deny (refused without explicit trust)',

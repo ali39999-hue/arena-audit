@@ -18,6 +18,8 @@
 | Finding fingerprint + cross-lens deduplication | ✅ | `src/findings/findings.mjs` |
 | Scoring 2.0: `NOT CHECKED ≠ PASS` (no gates ⇒ overall = null + coverage %) | ✅ | `computeScores()` — unit tested |
 | Sandbox: secrets stripped from child envs; untrusted repos refused without explicit trust | ✅ | `src/sandbox/policy.mjs` |
+| **Docker sandbox executor**: network=none, read-only base FS, CPU/RAM/PID quotas, non-root, zero secrets (`--sandbox docker`) | ✅ | `src/sandbox/docker.mjs` — pure args builder, unit-tested |
+| Remediation engine: **suggested** patches for verified findings, validated in an isolated git worktree with targeted tests — never auto-applied (`--remediate`) | ✅ | `src/remediation/patch.mjs` — `rejected`/`test_failed` are labeled states |
 | Versioned audit contract (`audit-run.json`: runId, engine, model, commit, schema) | ✅ | `src/core/schemas.mjs` |
 | Semantic layer without dependencies: symbol index, import graph, `findSymbol/findReferences/importedBy/impactOf` | ✅ | `src/semantic/symbols.mjs` — line-exact, evidence-anchorable |
 | Diff-aware audit: `--diff [ref]` (PR mode) and `--target <path>` with honest scope accounting | ✅ | `src/git/delta.mjs` — findings outside scope dropped & counted |
@@ -27,7 +29,25 @@
 | GitHub Action: diff-aware PR audit + SARIF upload | ✅ | `.github/workflows/arena-audit.yml` |
 | Evaluation Lab: deterministic evidence benchmark (`npm run eval`) | ✅ | `src/evals/` + golden fixtures — precision/recall gates in CI-able script |
 | Interactive HTML dashboard: Kanban board + rubric + filters, zero CDN, offline | ✅ | `src/dashboard.mjs` |
-| Docker sandbox isolation, Tree-sitter AST, mutation testing, control plane | 🚧 Planned | See `docs/ARCHITECTURE.md` roadmap alignment |
+| Tree-sitter full AST, mutation testing, control plane / multi-tenancy | 🚧 Planned | See `docs/ARCHITECTURE.md` roadmap alignment |
+
+### Sandbox modes
+
+```bash
+--sandbox trusted    # your repo; sanitized env (default)
+--sandbox docker     # isolated container: no network, read-only base FS, quotas (image: node:22-bookworm-slim, override with ARENA_DOCKER_IMAGE)
+--sandbox untrusted  # refuses tool execution unless ARENA_TRUST_REPO=1
+```
+
+### Remediation (suggested patches)
+
+```bash
+npx arena-audit --diff --remediate --ui
+# → arena-out/patches/<id>.diff  +  arena-out/remediation.json
+# Every patch: generated → git apply --check → applied in an isolated HEAD worktree
+# → targeted tests run there → labeled validated / test_failed / rejected.
+# Nothing is ever applied to your working tree automatically.
+```
 
 ## ⚔️ vs. `arena-skill` (original)
 

@@ -24,7 +24,7 @@ import { buildRepoSnapshot } from '../src/intake/repo-snapshot.mjs';
 import { EvidenceStore, locateSource, isStale } from '../src/evidence/evidence-store.mjs';
 import { runGates, normalizeGateResult } from '../src/gates/registry.mjs';
 import { planLenses, buildEvidenceContext, runSpecialist, runVerifier, runJudge } from '../src/agents/agents.mjs';
-import { detectProvider } from '../src/agents/llm.mjs';
+import { detectProvider, callLLM } from '../src/agents/llm.mjs';
 import { dedupeFindings, computeScores } from '../src/findings/findings.mjs';
 import { sandboxPosture } from '../src/sandbox/policy.mjs';
 import { generateDashboardHtml } from '../src/dashboard.mjs';
@@ -32,6 +32,7 @@ import { buildSymbolIndex, buildImportGraph, createSemanticQueries } from '../sr
 import { scopeFiles, gitDiffText } from '../src/git/delta.mjs';
 import { findRelatedTests, runTargetedTests } from '../src/verification/reproduce.mjs';
 import { toSarif } from '../src/outputs/sarif.mjs';
+import { remediateFinding } from '../src/remediation/patch.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
@@ -64,6 +65,7 @@ let openUi = false;
 let diffBase = null;
 let targetPath = null;
 let doReproduce = false;
+let doRemediate = false;
 let maxConcurrency = 4;
 let sandbox = 'trusted';
 let provider = process.env.ARENA_PROVIDER || null;
@@ -78,7 +80,11 @@ for (let i = 0; i < args.length; i++) {
   else if (arg === '--diff') diffBase = args[i + 1] && !args[i + 1].startsWith('-') ? args[++i] : null;
   else if (arg === '--target') targetPath = args[++i];
   else if (arg === '--reproduce') doReproduce = true;
-  else if (arg === '--sandbox') sandbox = args[++i] === 'untrusted' ? 'untrusted' : 'trusted';
+  else if (arg === '--remediate') doRemediate = true;
+  else if (arg === '--sandbox') {
+    const val = args[++i];
+    sandbox = ['trusted', 'untrusted', 'docker'].includes(val) ? val : 'trusted';
+  }
   else if (arg === '--concurrency' || arg === '-c') maxConcurrency = Math.max(1, Math.min(16, parseInt(args[++i], 10) || 4));
   else if (arg === '--output' || arg === '-o') outputDir = resolve(process.cwd(), args[++i]);
   else if (arg === '--provider' || arg === '-p') provider = args[++i];
@@ -101,6 +107,7 @@ Options:
   --diff [ref]            Diff-aware audit: only files changed vs ref (default: working tree vs HEAD)
   --target <path>         Targeted audit: only a subtree (e.g. --target src/payments)
   --reproduce             After verification, run related tests for verified findings (targeted test runner)
+  --remediate             Generate SUGGESTED patches for top verified findings, validated in an isolated git worktree (never auto-applied)
   --ui, --open            Open the interactive HTML dashboard in the browser
   --sandbox <mode>        trusted (default) | untrusted (refuses tool execution)
   -c, --concurrency <n>   Max parallel specialist agents (default 4)
@@ -355,9 +362,39 @@ async function main() {
     console.log(`  ${color.yellow}judge unavailable: ${e.message}${color.reset}`);
   }
 
+  // ── Phase: Remediation (P13) — suggested patches, worktree-validated ──
+  let remediation = [];
+  if (doRemediate) {
+    const verified = findings.filter((f) => f.status === 'verified' && f.evidenceRefs?.length).slice(0, 3);
+    if (!activeProvider) {
+      console.log(`\n${color.yellow}[Remediation] skipped — needs an LLM provider key.${color.reset}`);
+    } else if (verified.length === 0) {
+      console.log(`\n${color.dim}[Remediation] no verified findings eligible for patch suggestions.${color.reset}`);
+    } else {
+      console.log(`\n${color.bold}[6b] 🩺 Remediation — suggested patches for ${verified.length} verified finding(s)${color.reset}`);
+      for (const f of verified) {
+        const file = String(f.path || '').replace(/:\d+.*$/, '');
+        let fileContent = null;
+        try { fileContent = readFileSync(resolve(targetDir, file), 'utf-8').slice(0, 100000); } catch { /* unreadable */ }
+        const testFiles = findRelatedTests(file, snapshot, importGraph);
+        const record = await remediateFinding({
+          llm: (system, prompt) => callLLM(activeProvider, system, prompt, { model: modelName }),
+          root: targetDir, finding: f, evidence: evidence.get(f.evidenceRefs[0]),
+          fileContent, testFiles, projectName,
+        });
+        remediation.push(record);
+        f.patchId = record.id;
+        const icon = record.status === 'validated' ? `${color.green}validated ✓${color.reset}`
+          : record.status === 'test_failed' ? `${color.yellow}test_failed${color.reset}`
+          : `${color.red}${record.status}${color.reset}`;
+        console.log(`  ${icon} ${record.id} → ${file}`);
+      }
+    }
+  }
+
   const scores = computeScores(allGates, findings);
   finishRun({ run, root: targetDir, snapshot, gates: allGates, findings, evidence: evidence.toJSON(), scores, outputDir, lenses: plan.lenses, judge, projectName, sandbox,
-    scopeNote, delta, scopeDropped, symIndex, importGraph });
+    scopeNote, delta, scopeDropped, symIndex, importGraph, remediation });
 
   console.log(`\n${color.green}${color.bold}🎉 Audit Complete — ${scores.overall ?? 'N/A'}/100 (coverage ${scores.coverage.percent}%)${color.reset}`);
   for (const line of scores.explanations) console.log(`  ${color.dim}· ${line}${color.reset}`);
@@ -381,7 +418,7 @@ function readDocs(root) {
 
 /** Persist every deliverable + the audit-run manifest, and close the run. */
 function finishRun({ run, root, snapshot, gates, findings, evidence, scores, outputDir, lenses, judge, projectName, sandbox: sandboxMode = 'trusted',
-  scopeNote = 'full', delta = null, scopeDropped = 0, symIndex = { symbols: new Map() }, importGraph = { importers: new Map() } }) {
+  scopeNote = 'full', delta = null, scopeDropped = 0, symIndex = { symbols: new Map() }, importGraph = { importers: new Map() }, remediation = [] }) {
   // Final stale-evidence sweep: a finding whose evidence no longer matches is stale.
   for (const f of findings) {
     if (f.evidenceRefs && f.evidenceRefs.length && f.status === 'verified') {
@@ -406,6 +443,19 @@ function finishRun({ run, root, snapshot, gates, findings, evidence, scores, out
   }, null, 2), 'utf-8');
   writeFileSync(join(outputDir, 'findings.json'), JSON.stringify({ scores, findings }, null, 2), 'utf-8');
   writeFileSync(join(outputDir, 'report.sarif'), JSON.stringify(toSarif({ projectName, findings, gates }), null, 2), 'utf-8');
+
+  // Remediation deliverables (P13): patches + manifest, never auto-applied.
+  if (remediation.length > 0) {
+    const patchesDir = join(outputDir, 'patches');
+    mkdirSync(patchesDir, { recursive: true });
+    for (const p of remediation) {
+      if (p.diff) writeFileSync(join(patchesDir, `${p.id}.diff`), p.diff, 'utf-8');
+    }
+    writeFileSync(join(outputDir, 'remediation.json'), JSON.stringify({
+      note: 'Suggested patches only — review and apply manually. Validated in an isolated HEAD worktree.',
+      patches: remediation,
+    }, null, 2), 'utf-8');
+  }
   writeFileSync(join(outputDir, 'REPORT.md'), md, 'utf-8');
 
   const html = generateDashboardHtml({

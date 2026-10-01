@@ -51,11 +51,27 @@
 - `trusted` (default): gates run in the repo cwd; the child environment is
   **sanitized** — every variable matching a secret pattern (`*API_KEY*`,
   `*SECRET*`, `*TOKEN*`, AWS/Azure/GCP…) is stripped. Allowlisted vars only.
+- `docker`: gates execute inside a container with **network none**, read-only
+  base filesystem, tmpfs `/tmp`, CPU/RAM/PID quotas and a non-root user
+  (POSIX hosts). Only sanitized env vars are forwarded. The repo is mounted
+  read-write (gates may write caches) — that is the documented boundary.
 - `untrusted`: tool execution is **refused** unless the operator explicitly
   vouches (`--sandbox trusted` or `ARENA_TRUST_REPO=1`).
-- Docker-based isolation (filesystem boundary, network deny, CPU/RAM quotas)
-  is **planned (P9-02..P9-09) and not yet implemented**. The engine says so
-  in every manifest instead of implying a security boundary.
+
+## Remediation pipeline (P13, suggested-only)
+
+```
+verified finding (with hashed evidence)
+   → LLM generates a unified diff (minimal, style-preserving)
+   → git worktree add --detach (isolated checkout of HEAD)
+   → git apply --check → git apply
+   → targeted tests inside the worktree
+   → labeled: validated | test_failed | rejected | skipped_no_git
+   → patches/<id>.diff + remediation.json (never auto-applied)
+```
+
+Honest scope: worktrees check out HEAD, so validation runs against the
+committed state, not a dirty working tree — stated in every record.
 
 ## Verification states (v2 lifecycle)
 
@@ -70,9 +86,10 @@ never silently dropped.
 Implemented now: Phase 0 (contract/schemas), Phase 1 (repo intelligence),
 Phase 2 (evidence engine), Phase 3 (gate registry), Phase 5 (bounded parallel
 orchestrator), Phase 6 (evidence-based verification), Phase 7 (fingerprint/
-dedupe), Phase 8 (scoring 2.0), Phase 9 (sandbox policy foundation),
-Phase 12-partial (dashboard/CI).
+dedupe), Phase 8 (scoring 2.0), Phase 9 (sandbox: env hardening + Docker
+executor), Phase 11 (diff-aware audit), Phase 12-partial (dashboard/CI/SARIF),
+Phase 13 (suggested-only remediation with worktree validation).
 
-Next up (per backlog): AST/semantic layer (P4), Semgrep/SARIF ingestion,
-diff-aware audits (P11), GitHub Checks integration (P12), reproduction
-engine (P6-05), benchmark lab (P10).
+Next up (per backlog): AST/semantic deepening (Tree-sitter, P4-01),
+reproduction-generated tests, evaluation lab expansion (LLM datasets,
+P10-02..04), GitHub Checks/PR comments (P12-02..04), control plane (P15+).

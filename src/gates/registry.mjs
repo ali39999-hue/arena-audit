@@ -12,6 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { sanitizeEnv, assertSandboxPolicy } from '../sandbox/policy.mjs';
+import { runInDocker } from '../sandbox/docker.mjs';
 
 // ---------------------------------------------------------------------------
 // P3-04 — Result normalizer: every gate converges to this shape.
@@ -28,14 +29,22 @@ export function normalizeGateResult({ id, status, detail = '', durationMs = 0, r
 }
 
 /**
- * Run a gate's command inside the sandbox policy.
- * cmd must be "node" (the audit's approved interpreter); the target binary is
- * resolved under the repo's node_modules — never an arbitrary host binary.
+ * Run a gate's command under the sandbox policy.
+ *  - docker:   executed inside an isolated container (network none, read-only base FS).
+ *  - trusted:  executed on the host with a sanitized environment.
+ * The target binary is resolved under the repo's node_modules — never an
+ * arbitrary host binary.
  */
 export function execGateCommand(root, binRelPath, args, { timeoutMs = 300000, sandbox = 'trusted' } = {}) {
   assertSandboxPolicy(root, sandbox);
   const fullBin = resolve(root, binRelPath);
   const started = Date.now();
+
+  if (sandbox === 'docker') {
+    const r = runInDocker(root, binRelPath.split('\\').join('/'), args, { timeoutMs });
+    return { ...r, durationMs: r.durationMs || Date.now() - started };
+  }
+
   const res = spawnSync(process.execPath, [fullBin, ...args], {
     cwd: root,
     encoding: 'utf-8',
