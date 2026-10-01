@@ -108,6 +108,16 @@ test('SARIF output is 2.1.0 with rules, results, levels and fingerprints', () =>
   assert.equal(sarif.runs[0].properties.gates.typecheck, 'pass');
 });
 
+test('SARIF rules array has no duplicates (GitHub upload validation)', () => {
+  const findings = [
+    { lens: 'security', path: 'src/a.ts:1', problem: 'x', severity: 'high', status: 'verified', confidence: 0.9, fingerprint: 'dup' },
+    { lens: 'security', path: 'src/a.ts:5', problem: 'x (dup)', severity: 'high', status: 'verified', confidence: 0.9, fingerprint: 'dup' },
+  ];
+  const sarif = toSarif({ projectName: 'demo', findings, gates: [] });
+  const ruleIds = sarif.runs[0].tool.driver.rules.map((r) => r.id);
+  assert.equal(new Set(ruleIds).size, ruleIds.length, 'rule ids must be unique');
+});
+
 // ── P10: Evaluation lab ──────────────────────────────────────────────────────
 
 test('evidence eval scores anchors and traps honestly', () => {

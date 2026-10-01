@@ -9,23 +9,30 @@
 const LEVEL = { high: 'error', medium: 'warning', low: 'note' };
 
 export function toSarif({ projectName, findings, gates }) {
-  const rules = findings.map((f) => ({
-    id: `ARENA/${f.fingerprint || f.lens || 'finding'}`,
-    name: f.lens || 'audit-finding',
-    shortDescription: { text: f.lens || 'Arena audit finding' },
-    fullDescription: { text: f.problem || '' },
-    defaultConfiguration: { level: LEVEL[f.severity] || 'note' },
-    properties: {
-      'arena/status': f.status,
-      'arena/confidence': f.confidence ?? null,
-      'arena/severity': f.severity,
-    },
-  }));
+  // SARIF requires unique rule ids — dedupe rules by id (fingerprints may repeat).
+  const rulesById = new Map();
+  const results = [];
 
-  const results = findings.map((f) => {
+  for (const f of findings) {
+    const ruleId = `ARENA/${f.fingerprint || f.lens || 'finding'}`;
+    if (!rulesById.has(ruleId)) {
+      rulesById.set(ruleId, {
+        id: ruleId,
+        name: f.lens || 'audit-finding',
+        shortDescription: { text: f.lens || 'Arena audit finding' },
+        fullDescription: { text: f.problem || '' },
+        defaultConfiguration: { level: LEVEL[f.severity] || 'note' },
+        properties: {
+          'arena/status': f.status,
+          'arena/confidence': f.confidence ?? null,
+          'arena/severity': f.severity,
+        },
+      });
+    }
+
     const m = String(f.path || '').match(/^(.*?):(\d+)/);
-    return {
-      ruleId: `ARENA/${f.fingerprint || f.lens || 'finding'}`,
+    results.push({
+      ruleId,
       level: LEVEL[f.severity] || 'note',
       message: {
         text: `[${f.status}] ${f.problem}${f.verifierNote ? ` — verifier: ${f.verifierNote}` : ''}`,
@@ -38,8 +45,8 @@ export function toSarif({ projectName, findings, gates }) {
       }] : [],
       partialFingerprints: { arenaFingerprint: f.fingerprint || '' },
       properties: { status: f.status, confidence: f.confidence ?? null, sources: f.sources || [f.lens] },
-    };
-  });
+    });
+  }
 
   return {
     $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
@@ -49,7 +56,7 @@ export function toSarif({ projectName, findings, gates }) {
         driver: {
           name: 'arena-audit',
           informationUri: 'https://github.com/ali39999-hue/arena-audit',
-          rules,
+          rules: [...rulesById.values()],
         },
       },
       automationDetails: { id: `arena-audit/${projectName || 'repo'}` },
