@@ -30,14 +30,24 @@ jobs:
       - name: Run Arena Audit (diff-aware on PRs)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE="origin/${{ github.base_ref }}"
             git fetch origin "${{ github.base_ref }}" || true
-            node bin/arena-audit.mjs . --diff "$BASE" --sandbox trusted --output arena-out
+            node bin/arena-audit.mjs . --diff "$BASE" --sandbox trusted --output arena-out --github
           else
             node bin/arena-audit.mjs . --gates-only --output arena-out
           fi
+
+      - name: Save baseline artifact (for next-run new/known classification)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: arena-baseline
+          path: arena-out/arena-baseline.json
+          if-no-files-found: ignore
 
       - name: Upload SARIF to GitHub
         uses: github/codeql-action/upload-sarif@v3

@@ -61,10 +61,11 @@ const BASE_LENSES = [
  * Plan lenses from the RepoSnapshot + docs. Uses the LLM when available;
  * otherwise deterministic base lenses (never fails the audit).
  */
-export async function planLenses({ provider, model, snapshot, docsContext }) {
+export async function planLenses({ provider, model, snapshot, docsContext, llm = null }) {
   if (!provider) {
     return { lenses: BASE_LENSES, source: 'deterministic-fallback' };
   }
+  const call = llm || ((system, prompt) => callLLM(provider, system, prompt, { model }));
   try {
     const prompt = [
       'You are a Principal Software Architect preparing a multi-agent audit.',
@@ -85,7 +86,7 @@ export async function planLenses({ provider, model, snapshot, docsContext }) {
       'Design 4 to 6 audit lenses tailored to THIS repository. Output strict JSON:',
       '{"projectName":"...","projectDescription":"one paragraph","lenses":[{"id":"latin-id","title":"...","focus":"paths","checklist":["rule 1","rule 2","rule 3"]}]}',
     ].join('\n');
-    const text = await callLLM(provider, 'Output only valid JSON.', prompt, { model });
+    const text = await call('Output only valid JSON.', prompt);
     const parsed = parseJSONFromText(text);
     const lenses = Array.isArray(parsed.lenses) && parsed.lenses.length >= 2 ? parsed.lenses : BASE_LENSES;
     return { lenses, source: 'llm-planned', projectName: parsed.projectName, projectDescription: parsed.projectDescription };
@@ -154,7 +155,8 @@ export function buildEvidenceContext({ snapshot, files, locateSourceFn, lens, se
 // ---------------------------------------------------------------------------
 // Specialist (P5-09..P5-14): reviews WITH evidence.
 // ---------------------------------------------------------------------------
-export async function runSpecialist({ provider, model, lens, evidenceContext, projectName }) {
+export async function runSpecialist({ provider, model, lens, evidenceContext, projectName, llm = null }) {
+  const call = llm || ((system, prompt) => callLLM(provider, system, prompt, { model }));
   const system = 'You are a senior code auditor. Every claim must cite real code you were shown, as path:line. Do not invent files. If you cannot verify something, do not report it.';
   const prompt = [
     `Audit the codebase "${projectName}" through the lens: ${lens.title}`,
@@ -170,7 +172,7 @@ export async function runSpecialist({ provider, model, lens, evidenceContext, pr
     '- Output strict JSON: {"healthNote":"one sentence","findings":[{"path":"src/x.ts:42","problem":"...","evidence":"short quote","severity":"high|medium|low"}]}',
   ].join('\n');
 
-  const text = await callLLM(provider, system, prompt, { model });
+  const text = await call(system, prompt);
   const parsed = parseJSONFromText(text);
   return {
     healthNote: parsed.healthNote || '',
@@ -181,7 +183,8 @@ export async function runSpecialist({ provider, model, lens, evidenceContext, pr
 // ---------------------------------------------------------------------------
 // Verifier (P6-01..P6-03): independent, evidence-based. Gets the REAL excerpt.
 // ---------------------------------------------------------------------------
-export async function runVerifier({ provider, model, finding, evidence, gateResults, projectName }) {
+export async function runVerifier({ provider, model, finding, evidence, gateResults, projectName, llm = null }) {
+  const call = llm || ((system, prompt) => callLLM(provider, system, prompt, { model }));
   const system = 'You are an independent verification agent (adversarial). Your job is to REFUTE findings if possible. Decide only from the code evidence provided. Never edit files.';
   const gateSummary = gateResults
     .map((g) => `${g.id}: ${g.status}`)
@@ -205,7 +208,7 @@ export async function runVerifier({ provider, model, finding, evidence, gateResu
     'Rules: high severity only for real bugs/data loss/security issues. If the path/line does not match but a similar real issue exists, decision=verified with the correct path in note. If the code clearly contradicts the claim, decision=refuted.',
   ].join('\n');
 
-  const text = await callLLM(provider, system, prompt, { model });
+  const text = await call(system, prompt);
   const parsed = parseJSONFromText(text);
   const decision = ['verified', 'refuted', 'inconclusive'].includes(parsed.decision) ? parsed.decision : 'inconclusive';
   return {
@@ -219,7 +222,8 @@ export async function runVerifier({ provider, model, finding, evidence, gateResu
 // ---------------------------------------------------------------------------
 // Judge: synthesizes only from verified evidence.
 // ---------------------------------------------------------------------------
-export async function runJudge({ provider, model, gateResults, findings, healthNotes }) {
+export async function runJudge({ provider, model, gateResults, findings, healthNotes, llm = null }) {
+  const call = llm || ((system, prompt) => callLLM(provider, system, prompt, { model }));
   const system = 'You are the principal judge. Weight verified findings primarily; refuted findings must not appear as issues. Be calibrated: no exaggeration, no fear-mongering.';
   const narrow = findings.map((f) => ({
     lens: f.lens, path: f.path, problem: f.problem,
@@ -242,7 +246,7 @@ export async function runJudge({ provider, model, gateResults, findings, healthN
     'Max 8 priorities, deduplicated, verified first.',
   ].join('\n');
 
-  const text = await callLLM(provider, system, prompt, { model });
+  const text = await call(system, prompt);
   const parsed = parseJSONFromText(text);
   return {
     verdict: parsed.verdict || 'Audit completed.',

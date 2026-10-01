@@ -33,6 +33,12 @@ import { scopeFiles, gitDiffText } from '../src/git/delta.mjs';
 import { findRelatedTests, runTargetedTests } from '../src/verification/reproduce.mjs';
 import { toSarif } from '../src/outputs/sarif.mjs';
 import { remediateFinding } from '../src/remediation/patch.mjs';
+import { createTelemetry } from '../src/observability/telemetry.mjs';
+import { buildBaseline, saveBaseline, loadBaseline, classifyAgainstBaseline } from '../src/findings/baseline.mjs';
+import {
+  decideConclusion, buildCheckPayload, buildPrComment,
+  createCheckRun, upsertPrComment, prNumberFromEnv,
+} from '../src/integrations/github.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
@@ -66,6 +72,9 @@ let diffBase = null;
 let targetPath = null;
 let doReproduce = false;
 let doRemediate = false;
+let saveBaselineFlag = false;
+let baselinePath = null;
+let githubFlag = false;
 let maxConcurrency = 4;
 let sandbox = 'trusted';
 let provider = process.env.ARENA_PROVIDER || null;
@@ -81,6 +90,11 @@ for (let i = 0; i < args.length; i++) {
   else if (arg === '--target') targetPath = args[++i];
   else if (arg === '--reproduce') doReproduce = true;
   else if (arg === '--remediate') doRemediate = true;
+  else if (arg === '--save-baseline') saveBaselineFlag = true;
+  else if (arg === '--baseline') {
+    baselinePath = args[i + 1] && !args[i + 1].startsWith('-') ? resolve(process.cwd(), args[++i]) : resolve(targetDir, 'arena-baseline.json');
+  }
+  else if (arg === '--github') githubFlag = true;
   else if (arg === '--sandbox') {
     const val = args[++i];
     sandbox = ['trusted', 'untrusted', 'docker'].includes(val) ? val : 'trusted';
@@ -108,6 +122,9 @@ Options:
   --target <path>         Targeted audit: only a subtree (e.g. --target src/payments)
   --reproduce             After verification, run related tests for verified findings (targeted test runner)
   --remediate             Generate SUGGESTED patches for top verified findings, validated in an isolated git worktree (never auto-applied)
+  --save-baseline         Write arena-baseline.json from this run's verified/inconclusive findings
+  --baseline [path]       Compare against a baseline: findings labeled new/known; fixed fingerprints reported
+  --github                Post GitHub Check Run + idempotent PR comment (needs GITHUB_TOKEN, GITHUB_REPOSITORY)
   --ui, --open            Open the interactive HTML dashboard in the browser
   --sandbox <mode>        trusted (default) | untrusted (refuses tool execution)
   -c, --concurrency <n>   Max parallel specialist agents (default 4)
@@ -144,6 +161,14 @@ async function main() {
     provider: detectProvider(provider), model: modelName,
     repository: basename(targetDir),
   });
+  const telemetry = createTelemetry(run.runId);
+  // Instrumented LLM: every provider call becomes a telemetry span.
+  const instrumentedLlm = (system, prompt) => {
+    const span = telemetry.start('llm', 'provider-call');
+    return callLLM(detectProvider(provider), system, prompt, { model: modelName })
+      .then((r) => { span.end('ok'); return r; })
+      .catch((e) => { span.end('error', { message: e.message }); throw e; });
+  };
 
   console.log(`Target:   ${color.cyan}${targetDir}${color.reset}`);
   console.log(`Run ID:   ${color.cyan}${run.runId}${color.reset}`);
@@ -172,12 +197,14 @@ async function main() {
 
   // ── Phase 2: Deterministic Gates ──
   console.log(`\n${color.bold}[2/6] 🚦 Deterministic Gates${color.reset}`);
-  const gateOutput = runGates(targetDir, { sandbox });
+  const gateSpan = telemetry.start('phase', 'gates');
+  const gateOutput = runGates(targetDir, { sandbox, onResult: (g) => telemetry.timed('gate', g.id, g.durationMs, { status: g.status }) });
   const gateResults = gateOutput.results;
   const notAvail = ['typecheck', 'lint', 'test', 'semgrep', 'gitleaks']
     .filter((id) => !gateOutput.applicable.includes(id))
     .map((id) => normalizeGateResult({ id, status: 'not_available', detail: 'tool not detected in this repository' }));
   const allGates = [...gateResults, ...notAvail];
+  gateSpan.end('ok', { ran: gateResults.length, detected: gateOutput.applicable.length });
   for (const g of gateResults) {
     const tag = g.status === 'pass' ? `${color.green}PASS ✓${color.reset}` : `${color.red}FAIL ✗${color.reset}`;
     console.log(`  ${g.id.padEnd(12)} ${tag} (${(g.durationMs / 1000).toFixed(1)}s)`);
@@ -189,7 +216,7 @@ async function main() {
   // Gates-only mode still produces dashboard + manifest, then exits.
   if (gatesOnly) {
     const scores = computeScores(allGates, []);
-    finishRun({ run, root: targetDir, snapshot, gates: allGates, findings: [], evidence: [], scores, outputDir, lenses: [], sandbox });
+    finishRun({ run, root: targetDir, snapshot, gates: allGates, findings: [], evidence: [], scores, outputDir, lenses: [], sandbox, telemetry, scopeNote, delta });
     if (openUi) openInBrowser(join(outputDir, 'index.html'));
     console.log(`\n${color.green}Gates-only audit complete.${color.reset}`);
     process.exit(0);
@@ -223,7 +250,7 @@ async function main() {
     writeFileSync(join(outputDir, 'tournament-manifest.json'), JSON.stringify({ run, snapshot: { ...snapshot, sampleSourceFiles: snapshot.sampleSourceFiles.slice(0, 50) } }, null, 2), 'utf-8');
 
     const scores = computeScores(allGates, []);
-    finishRun({ run, root: targetDir, snapshot, gates: allGates, findings: [], evidence: [], scores, outputDir, lenses: [], sandbox });
+    finishRun({ run, root: targetDir, snapshot, gates: allGates, findings: [], evidence: [], scores, outputDir, lenses: [], sandbox, telemetry });
     if (openUi) openInBrowser(join(outputDir, 'index.html'));
     console.log(`\n${color.green}✓ agent-instructions.md + tournament-manifest.json + index.html written.${color.reset}`);
     console.log(`  Tell your AI assistant: "Read ${join(outputDir, 'agent-instructions.md')} and run the tournament."`);
@@ -233,7 +260,7 @@ async function main() {
   // ── Phase 3: Lens Planning ──
   console.log(`\n${color.bold}[3/6] 🗺️  Lens Planning (provider: ${activeProvider})${color.reset}`);
   const docsContext = readDocs(targetDir);
-  const plan = await planLenses({ provider: activeProvider, model: modelName, snapshot, docsContext });
+  const plan = await planLenses({ provider: activeProvider, model: modelName, snapshot, docsContext, llm: instrumentedLlm });
   const projectName = plan.projectName || snapshot.dependencies.projectName || basename(targetDir);
   console.log(`  ${plan.lenses.length} lenses (${plan.source}) for "${projectName}"`);
 
@@ -242,13 +269,20 @@ async function main() {
   // ── Phase 4+5: Parallel Specialists → Evidence-Anchored Verifiers ──
   console.log(`\n${color.bold}[4/6] ⚔️  Parallel Specialists (concurrency: ${maxConcurrency})${color.reset}`);
   const specialistResults = await runPool(plan.lenses, async (lens) => {
+    const span = telemetry.start('agent', `specialist:${lens.id}`);
     const context = buildEvidenceContext({
       snapshot, files: scopedFiles.slice(0, 2000),
       locateSourceFn: (ref, opts) => locateSource(targetDir, ref, opts),
       lens, semantic, diffText,
     });
-    const review = await runSpecialist({ provider: activeProvider, model: modelName, lens, evidenceContext: context, projectName });
-    return { lens, review };
+    try {
+      const review = await runSpecialist({ provider: activeProvider, model: modelName, lens, evidenceContext: context, projectName, llm: instrumentedLlm });
+      span.end('ok', { candidates: review.findings.length });
+      return { lens, review };
+    } catch (e) {
+      span.end('error', { message: e.message });
+      throw e;
+    }
   }, { maxConcurrency, onSettled: (r) => {
     if (r.ok) console.log(`  ${color.green}✓${color.reset} ${r.value.lens.title}: ${r.value.review.findings.length} candidate(s)`);
     else console.log(`  ${color.red}✗${color.reset} lens failed: ${r.error.message}`);
@@ -279,12 +313,15 @@ async function main() {
     }
     const anchored = { ...f, evidenceRefs: [ev.id], path: f.path };
     if (loc.status !== 'ok') {
+      telemetry.timed('agent', 'verifier:skipped-invalid', 0, { path: f.path, status: loc.status });
       return { ...anchored, status: 'invalid', confidence: 0, verifierNote: `Evidence resolution failed: ${loc.status}` };
     }
+    const vSpan = telemetry.start('agent', 'verifier');
     const verdict = await runVerifier({
       provider: activeProvider, model: modelName,
-      finding: anchored, evidence: ev, gateResults, projectName,
+      finding: anchored, evidence: ev, gateResults, projectName, llm: instrumentedLlm,
     });
+    vSpan.end('ok', { decision: verdict.decision, confidence: verdict.confidence });
     return {
       ...anchored,
       status: verdict.decision === 'verified' ? 'verified' : verdict.decision === 'refuted' ? 'refuted' : 'inconclusive',
@@ -324,6 +361,25 @@ async function main() {
   // ── Phase: Finding Intelligence — fingerprint + dedupe ──
   findings = dedupeFindings(findings);
 
+  // ── Phase: Baseline classification (P14) — new vs known vs fixed ──
+  let baselineSummary = { mode: 'none' };
+  if (baselinePath) {
+    const baseline = loadBaseline(baselinePath);
+    if (!baseline) {
+      console.log(`\n${color.yellow}[Baseline] no baseline file at ${baselinePath} — treating everything as new.${color.reset}`);
+    } else if (baseline.corrupt) {
+      console.log(`\n${color.red}[Baseline] corrupt/unrecognized baseline (${baseline.reason}) — skipping comparison.${color.reset}`);
+      baselineSummary = { mode: 'corrupt', reason: baseline.reason };
+    } else {
+      const cls = classifyAgainstBaseline(findings, baseline);
+      baselineSummary = {
+        mode: 'compared', path: baselinePath, baselineRunId: baseline.runId, baselineScope: baseline.scope,
+        newCount: cls.new.length, knownCount: cls.known.length, fixedCount: cls.fixed.length,
+      };
+      console.log(`\n${color.bold}[📌 Baseline vs ${baseline.runId}]${color.reset} new: ${color.cyan}${cls.new.length}${color.reset} · known: ${cls.known.length} · fixed: ${color.green}${cls.fixed.length}${color.reset}`);
+    }
+  }
+
   // ── Reproduction (P6-04/05): targeted tests for verified findings (opt-in) ──
   if (doReproduce && findings.some((f) => f.status === 'verified')) {
     console.log(`\n${color.bold}[5b] 🧪 Reproduction — targeted tests for verified findings${color.reset}`);
@@ -356,7 +412,7 @@ async function main() {
   console.log(`\n${color.bold}[6/6] ⚖️  Principal Judge${color.reset}`);
   let judge = { verdict: 'Audit completed.', priorities: [] };
   try {
-    judge = await runJudge({ provider: activeProvider, model: modelName, gateResults: allGates, findings, healthNotes });
+    judge = await runJudge({ provider: activeProvider, model: modelName, gateResults: allGates, findings, healthNotes, llm: instrumentedLlm });
     console.log(`  ${color.dim}${judge.verdict.slice(0, 140)}…${color.reset}`);
   } catch (e) {
     console.log(`  ${color.yellow}judge unavailable: ${e.message}${color.reset}`);
@@ -394,7 +450,47 @@ async function main() {
 
   const scores = computeScores(allGates, findings);
   finishRun({ run, root: targetDir, snapshot, gates: allGates, findings, evidence: evidence.toJSON(), scores, outputDir, lenses: plan.lenses, judge, projectName, sandbox,
-    scopeNote, delta, scopeDropped, symIndex, importGraph, remediation });
+    scopeNote, delta, scopeDropped, symIndex, importGraph, remediation, telemetry, baselineSummary });
+
+  // ── Baseline save (P14-04) ──
+  if (saveBaselineFlag) {
+    const baselineOut = buildBaseline({ findings, runId: run.runId, scope: run.mode, commit: run.commit });
+    const path = saveBaseline(resolve(outputDir, 'arena-baseline.json'), baselineOut);
+    console.log(`  📌 Baseline saved: ${color.cyan}${path}${color.reset} (${baselineOut.fingerprints.length} fingerprints)`);
+  }
+
+  // ── GitHub integration (P12-02/04): check run + idempotent PR comment ──
+  if (githubFlag && process.env.GITHUB_TOKEN && process.env.GITHUB_REPOSITORY) {
+    const newFindings = findings.filter((f) => f.status === 'verified' && f.baselineState === 'new');
+    const knownCount = findings.filter((f) => f.status === 'verified' && f.baselineState === 'known').length;
+    const conclusion = decideConclusion({ gates: allGates, findings, coverage: scores.coverage });
+    const runMeta = { runId: run.runId, mode: run.mode, commit: process.env.GITHUB_SHA || run.commit };
+    try {
+      await createCheckRun({
+        token: process.env.GITHUB_TOKEN, repo: process.env.GITHUB_REPOSITORY,
+        payload: buildCheckPayload({ conclusion, scores, newVerified: newFindings.length, knownVerified: knownCount, gates: allGates, runMeta }),
+      });
+      console.log(`  ☁️ GitHub check posted (${conclusion}).`);
+    } catch (e) {
+      console.log(`  ${color.yellow}GitHub check failed: ${e.message}${color.reset}`);
+    }
+    const pr = prNumberFromEnv();
+    if (pr) {
+      try {
+        await upsertPrComment({
+          token: process.env.GITHUB_TOKEN, repo: process.env.GITHUB_REPOSITORY, prNumber: pr,
+          body: buildPrComment({
+            runMeta, scores, coverage: scores.coverage, gates: allGates,
+            newFindings, knownCount, fixedCount: baselineSummary.fixedCount || 0,
+            priorities: judge?.priorities || [],
+          }),
+        });
+        console.log(`  💬 PR #${pr} comment updated.`);
+      } catch (e) {
+        console.log(`  ${color.yellow}PR comment failed: ${e.message}${color.reset}`);
+      }
+    }
+  }
 
   console.log(`\n${color.green}${color.bold}🎉 Audit Complete — ${scores.overall ?? 'N/A'}/100 (coverage ${scores.coverage.percent}%)${color.reset}`);
   for (const line of scores.explanations) console.log(`  ${color.dim}· ${line}${color.reset}`);
@@ -418,7 +514,8 @@ function readDocs(root) {
 
 /** Persist every deliverable + the audit-run manifest, and close the run. */
 function finishRun({ run, root, snapshot, gates, findings, evidence, scores, outputDir, lenses, judge, projectName, sandbox: sandboxMode = 'trusted',
-  scopeNote = 'full', delta = null, scopeDropped = 0, symIndex = { symbols: new Map() }, importGraph = { importers: new Map() }, remediation = [] }) {
+  scopeNote = 'full', delta = null, scopeDropped = 0, symIndex = { symbols: new Map() }, importGraph = { importers: new Map() }, remediation = [],
+  telemetry = null, baselineSummary = { mode: 'none' } }) {
   // Final stale-evidence sweep: a finding whose evidence no longer matches is stale.
   for (const f of findings) {
     if (f.evidenceRefs && f.evidenceRefs.length && f.status === 'verified') {
@@ -432,15 +529,17 @@ function finishRun({ run, root, snapshot, gates, findings, evidence, scores, out
   run.coverage = scores.coverage;
 
   const verified = findings.filter((f) => f.status === 'verified');
-  const md = buildMarkdown({ run, projectName: projectName || run.repository, gates, findings, scores, judge, lenses });
+  const md = buildMarkdown({ run, projectName: projectName || run.repository, gates, findings, scores, judge, lenses, baselineSummary });
 
   writeFileSync(join(outputDir, 'audit-run.json'), JSON.stringify({
     run, sandbox: sandboxPosture(sandboxMode),
     scope: { mode: run.mode, note: scopeNote, dropped: scopeDropped || 0, delta: delta ? { base: delta.base, changed: delta.changed.length, available: delta.available } : null },
+    baseline: baselineSummary,
     snapshot: { ...snapshot, allFiles: undefined, sampleSourceFiles: snapshot.sampleSourceFiles.slice(0, 50) },
     semantic: { indexedSymbols: symIndex.symbols.size, filesWithImporters: importGraph.importers.size },
     gates, findings, evidence, lenses, judge: judge || null,
   }, null, 2), 'utf-8');
+  if (telemetry) writeFileSync(join(outputDir, 'telemetry.json'), JSON.stringify(telemetry.toJSON(), null, 2), 'utf-8');
   writeFileSync(join(outputDir, 'findings.json'), JSON.stringify({ scores, findings }, null, 2), 'utf-8');
   writeFileSync(join(outputDir, 'report.sarif'), JSON.stringify(toSarif({ projectName, findings, gates }), null, 2), 'utf-8');
 
@@ -484,7 +583,7 @@ function finishRun({ run, root, snapshot, gates, findings, evidence, scores, out
   writeFileSync(join(outputDir, 'index.html'), html, 'utf-8');
 }
 
-function buildMarkdown({ run, projectName, gates, findings, scores, judge, lenses }) {
+function buildMarkdown({ run, projectName, gates, findings, scores, judge, lenses, baselineSummary = { mode: 'none' } }) {
   const verified = findings.filter((f) => f.status === 'verified');
   const refuted = findings.filter((f) => f.status === 'refuted');
   const other = findings.filter((f) => !['verified', 'refuted'].includes(f.status));
@@ -520,6 +619,13 @@ ${refuted.map((f) => `- \`${f.path}\` — ${f.problem} → ${f.verifierNote}`).j
 
 ## ⚠️ Needs Human Review (${other.length})
 ${other.map((f) => `- \`${f.path}\` — ${f.problem} [${f.status}] → ${f.verifierNote || ''}`).join('\n') || 'None.'}
+
+## 📌 Baseline
+${baselineSummary.mode === 'compared'
+    ? `Compared against \`${baselineSummary.baselineRunId}\` (scope: ${baselineSummary.baselineScope}) — **${baselineSummary.newCount} new**, ${baselineSummary.knownCount} known, ${baselineSummary.fixedCount} fixed.`
+    : baselineSummary.mode === 'corrupt'
+      ? `Baseline unreadable: ${baselineSummary.reason}`
+      : 'No baseline provided — all findings are effectively new.'}
 
 ## 🧾 Not Covered
 - Full build / on-device execution was not performed.

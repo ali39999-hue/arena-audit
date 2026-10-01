@@ -1,6 +1,6 @@
 {
   "name": "arena-audit",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Evidence-anchored multi-agent tournament codebase audit engine for any AI harness (Claude Code, Cursor, Windsurf, ZCode, CI/CD)",
   "main": "bin/arena-audit.mjs",
   "bin": {

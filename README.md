@@ -20,6 +20,9 @@
 | Sandbox: secrets stripped from child envs; untrusted repos refused without explicit trust | ✅ | `src/sandbox/policy.mjs` |
 | **Docker sandbox executor**: network=none, read-only base FS, CPU/RAM/PID quotas, non-root, zero secrets (`--sandbox docker`) | ✅ | `src/sandbox/docker.mjs` — pure args builder, unit-tested |
 | Remediation engine: **suggested** patches for verified findings, validated in an isolated git worktree with targeted tests — never auto-applied (`--remediate`) | ✅ | `src/remediation/patch.mjs` — `rejected`/`test_failed` are labeled states |
+| Baseline / regression intelligence: `--save-baseline` + `--baseline` classify findings as new/known/fixed; CI gates on **new** only | ✅ | `src/findings/baseline.mjs` |
+| GitHub integration: Check Run + idempotent PR comment via `--github` (conclusion policy: known debt never blocks) | ✅ | `src/integrations/github.mjs` — pure payload builders, unit-tested |
+| Observability: run-level trace with spans per gate/agent/LLM call → `telemetry.json` (honest cost note) | ✅ | `src/observability/telemetry.mjs` |
 | Versioned audit contract (`audit-run.json`: runId, engine, model, commit, schema) | ✅ | `src/core/schemas.mjs` |
 | Semantic layer without dependencies: symbol index, import graph, `findSymbol/findReferences/importedBy/impactOf` | ✅ | `src/semantic/symbols.mjs` — line-exact, evidence-anchorable |
 | Diff-aware audit: `--diff [ref]` (PR mode) and `--target <path>` with honest scope accounting | ✅ | `src/git/delta.mjs` — findings outside scope dropped & counted |
