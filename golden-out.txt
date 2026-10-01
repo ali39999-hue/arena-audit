@@ -1,0 +1,37 @@
+node:internal/modules/esm/get_format:236
+  throw new ERR_UNKNOWN_FILE_EXTENSION(ext, filepath);
+        ^
+
+TypeError [ERR_UNKNOWN_FILE_EXTENSION]: Unknown file extension ".txt" for C:\Users\Lenovo\arena-audit\golden-out.txt
+    at Object.getFileProtocolModuleFormat [as file:] (node:internal/modules/esm/get_format:236:9)
+    at defaultGetFormat (node:internal/modules/esm/get_format:262:36)
+    at defaultLoadSync (node:internal/modules/esm/load:161:16)
+    at #loadAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:802:12)
+    at #loadSync (node:internal/modules/esm/loader:834:53)
+    at ModuleLoader.load (node:internal/modules/esm/loader:783:26)
+    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:494:31)
+    at #getOrCreateModuleJobAfterResolve (node:internal/modules/esm/loader:560:36)
+    at afterResolve (node:internal/modules/esm/loader:607:52)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:613:12) {
+  code: 'ERR_UNKNOWN_FILE_EXTENSION'
+}
+
+Node.js v24.18.0
+✖ golden-out.txt (41.7866ms)
+✔ GOLDEN: security finding → verification → reproduction → remediation → regression → human gate → report (581.1591ms)
+✔ crash recovery: a killed run resumes from checkpoint and completes (544.0402ms)
+✔ budget exhaustion: hard limit cancels remaining tasks with reduced scope (277.1221ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1495.4729
+
+✖ failing tests:
+
+test at golden-out.txt:1:1
+✖ golden-out.txt (41.7866ms)
+  'test failed'

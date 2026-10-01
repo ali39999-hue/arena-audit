@@ -40,6 +40,7 @@ Every single capability has been audited, tested, benchmarked, secured, and docu
 | 25 | **Secret Vault (AES-256-GCM + Rotation)** | [✓] | [✓] | [✓] | [✓] | [✓] | **READY** |
 | 26 | **Enterprise Data Retention Policies** | [✓] | [✓] | [✓] | [✓] | [✓] | **READY** |
 | 27 | **Control Plane REST API & Web Dashboard** | [✓] | [✓] | [✓] | [✓] | [✓] | **READY** |
+| 28 | **Dynamic Workflow Runtime (DAG/Planner/Scheduler/Events/State/Artifacts/Human Gates/Budget)** | [✓] | [✓] | [✓] | [✓] | [✓] | **READY** |
 
 ---
 

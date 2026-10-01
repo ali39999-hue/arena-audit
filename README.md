@@ -50,6 +50,7 @@
 | **Multi-Tenancy Isolation**: strict cryptographic and logical boundaries between organizations | ✅ | `src/server/multi-tenancy.mjs` |
 | **Policy-as-Code & Compliance Profiles**: OWASP Top 10, CWE Top 25, NIST SP 800-53, SLSA Level 3, SOC2, FinTech-Strict | ✅ | `src/server/compliance.mjs` |
 | **Enterprise Secret Vault & Retention**: AES-256-GCM encryption with key rotation & configurable data retention | ✅ | `src/server/retention.mjs` |
+| **Dynamic Workflow Runtime (DW)**: internal dynamic DAG + planner/re-planner + bounded scheduler + event bus + checkpoint/resume + artifact store + human gates + budget engine — the 20 audit phases become composable capabilities | ✅ | `src/workflow/*` — CLI: `workflow start/status/tasks/graph/events/approve/reject/resume/cancel` |
 | **Certified Production-Ready**: full 27-capability matrix audited and certified | 🏆 **READY** | See [`docs/FINAL_READINESS_REPORT.md`](docs/FINAL_READINESS_REPORT.md) |
 
 ### Sandbox modes

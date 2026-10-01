@@ -766,11 +766,15 @@ async function patchesMain(cmd, argv) {
   }
 }
 
-// ── Entry point: serve subcommand vs. audit run (after all declarations) ──
+// ── Entry point: workflow / serve subcommands vs. audit run (after all declarations) ──
 const argsAll = process.argv.slice(2);
 const command = argsAll[0];
 if (command === 'serve') {
   serveMain(argsAll.slice(1)).catch((e) => { console.error(`Fatal: ${e.message}`); process.exit(1); });
+} else if (command === 'workflow') {
+  import('../src/workflow/cli.mjs')
+    .then((m) => m.workflowMain(argsAll.slice(1)))
+    .catch((e) => { console.error(`Fatal: ${e.message}`); process.exit(1); });
 } else if (command === 'patches' || command === 'approve' || command === 'reject') {
   patchesMain(command, argsAll.slice(1)).catch((e) => { console.error(`Fatal: ${e.message}`); process.exit(1); });
 } else {

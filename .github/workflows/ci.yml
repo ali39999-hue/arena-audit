@@ -26,6 +26,8 @@ jobs:
         run: npm run eval -- --pipeline 28 --seed 42
       - name: Self-Audit — Arena audits Arena (STEP 6 release gate)
         run: npm run self-audit
+      - name: Golden Workflow Scenario — dynamic workflow runtime (DW gate)
+        run: node --test --test-timeout=45000 --test-force-exit tests/unit/workflow-golden.test.mjs
       - name: CLI smoke — help
         run: node bin/arena-audit.mjs --help
       - name: CLI smoke — self gates-only audit on a fixture repo
