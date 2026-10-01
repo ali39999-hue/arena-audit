@@ -1,0 +1,216 @@
+{
+  "schemaVersion": "2.0.0",
+  "name": "eval-platform-comprehensive",
+  "description": "Comprehensive multi-category benchmark dataset across 8 distinct quality/assurance dimensions.",
+  "cases": [
+    {
+      "id": "CASE-SEC-01",
+      "category": "security",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "Path traversal risk in resolveUserDataPath",
+      "expectedLocation": {
+        "file": "src/security/injections.ts",
+        "line": 4,
+        "endLine": 5
+      },
+      "expectedCategory": "security",
+      "expectedSeverity": "high",
+      "expectedStatus": "verified",
+      "evidence": {
+        "contentHash": "50c8cff417fae4bc90a079e0a29367f0f04fbe937b420f12fa28f44ff53e8bb8",
+        "excerpt": "return `${baseDirectory}/${userInputPath}`;"
+      }
+    },
+    {
+      "id": "CASE-SEC-02",
+      "category": "security",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "Client-supplied debugOverride parameter bypasses role authorization",
+      "expectedLocation": {
+        "file": "src/security/injections.ts",
+        "line": 10,
+        "endLine": 14
+      },
+      "expectedCategory": "security",
+      "expectedSeverity": "high",
+      "expectedStatus": "verified",
+      "evidence": {
+        "contentHash": "ca9976378411b7dfb8f36c5d14e0f4cbbe2f8027a4884fbfbc66a4bc2e30ba97",
+        "excerpt": "if (user.debugOverride === true) { return true; }"
+      }
+    },
+    {
+      "id": "CASE-CORR-01",
+      "category": "correctness",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "Off-by-one boundary error in getPageItems returning pageSize + 1 items",
+      "expectedLocation": {
+        "file": "src/correctness/concurrency.ts",
+        "line": 5,
+        "endLine": 6
+      },
+      "expectedCategory": "correctness",
+      "expectedSeverity": "medium",
+      "expectedStatus": "verified",
+      "evidence": {
+        "contentHash": "61a15ea80c0587a8b417c8cf4d173c3fa36dfa42bf6ff0dbfb4199fc62ea3491",
+        "excerpt": "const end = start + pageSize + 1;"
+      }
+    },
+    {
+      "id": "CASE-CORR-02",
+      "category": "correctness",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "Async function inside forEach creates unawaited race conditions",
+      "expectedLocation": {
+        "file": "src/correctness/concurrency.ts",
+        "line": 12,
+        "endLine": 15
+      },
+      "expectedCategory": "correctness",
+      "expectedSeverity": "high",
+      "expectedStatus": "verified",
+      "evidence": {
+        "contentHash": "da281cf3182885ca66cf17f92d474b7bc902c6114eb9a69512a5db3ad76798a2",
+        "excerpt": "userIds.forEach(async (id) => {"
+      }
+    },
+    {
+      "id": "CASE-ARCH-01",
+      "category": "architecture",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "Clean Architecture breach: pure domain model imports concrete database connection pool",
+      "expectedLocation": {
+        "file": "src/architecture/violation.ts",
+        "line": 3,
+        "endLine": 13
+      },
+      "expectedCategory": "architecture",
+      "expectedSeverity": "high",
+      "expectedStatus": "verified",
+      "evidence": {
+        "contentHash": "34ab1a8779d7ce7e68bc6a1005fbc01e8da6ba735f4581977be415f33ef7aa16",
+        "excerpt": "import { DatabaseConnectionPool } from '../infrastructure/fakeDb.js';"
+      }
+    },
+    {
+      "id": "CASE-TEST-01",
+      "category": "testing",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "Tautological unit test returns constant true without testing ledger math",
+      "expectedLocation": {
+        "file": "src/testing/gaps.ts",
+        "line": 13,
+        "endLine": 16
+      },
+      "expectedCategory": "testing",
+      "expectedSeverity": "medium",
+      "expectedStatus": "verified",
+      "evidence": {
+        "contentHash": "d258cb28e4693a6285a86a076717a60eb72c676bc9891469e7cf93309a7ad8a7",
+        "excerpt": "export function runSelfTest(): boolean { return true; }"
+      }
+    },
+    {
+      "id": "CASE-PERF-01",
+      "category": "performance",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "Unbounded event listener registration in per-request function creates memory leak",
+      "expectedLocation": {
+        "file": "src/performance/leaks.ts",
+        "line": 8,
+        "endLine": 11
+      },
+      "expectedCategory": "performance",
+      "expectedSeverity": "high",
+      "expectedStatus": "verified",
+      "evidence": {
+        "contentHash": "79b392a8b9826a79ee0790eb7707e7e83467b7e8d7f766e4a28292f707f18579",
+        "excerpt": "bus.on('event', (data) => {"
+      }
+    },
+    {
+      "id": "CASE-PERF-02",
+      "category": "performance",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "N+1 query pattern: sequential per-item fetch inside loop instead of batch query",
+      "expectedLocation": {
+        "file": "src/performance/leaks.ts",
+        "line": 17,
+        "endLine": 20
+      },
+      "expectedCategory": "performance",
+      "expectedSeverity": "medium",
+      "expectedStatus": "verified",
+      "evidence": {
+        "contentHash": "81ab197be07ae086cb9382f70b77db93198e3b08e7df55a0194883c4f74d0811",
+        "excerpt": "for (const id of userIds) { const profile = await fetchProfileFn(id); }"
+      }
+    },
+    {
+      "id": "CASE-FP-01",
+      "category": "false_positive",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "Parameterized tagged template must NOT be flagged as SQL injection",
+      "expectedLocation": {
+        "file": "src/fp_traps/safe_query.ts",
+        "line": 9,
+        "endLine": 11
+      },
+      "expectedCategory": "security",
+      "expectedSeverity": "high",
+      "expectedStatus": "refuted",
+      "evidence": {
+        "contentHash": "82a98f1073b64807ea8cb4908ef948e71507f308a0d9e87707128cf7e8b61e06",
+        "excerpt": "return sql`SELECT id, name FROM users WHERE id = ${userId}`;"
+      }
+    },
+    {
+      "id": "CASE-AMBIG-01",
+      "category": "ambiguous",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "Timeout and retry threshold is an architectural latency tradeoff requiring policy review",
+      "expectedLocation": {
+        "file": "src/ambiguous/timeout_tradeoff.ts",
+        "line": 6,
+        "endLine": 9
+      },
+      "expectedCategory": "architecture",
+      "expectedSeverity": "low",
+      "expectedStatus": "inconclusive",
+      "evidence": {
+        "contentHash": "44bb22ae808cb487ea948f07ae07f2081577908b8b8ae87701728cb7e8964e05",
+        "excerpt": "export const HTTP_CLIENT_CONFIG = { timeoutMs: 8000, maxRetries: 2, backoffMultiplier: 1.5 };"
+      }
+    },
+    {
+      "id": "CASE-SAFE-01",
+      "category": "safe_pattern",
+      "repository": "eval-platform",
+      "commit": "eval-platform-v2",
+      "expectedFinding": "Clean discount calculation must not trigger findings",
+      "expectedLocation": {
+        "file": "src/safe_patterns/idiomatic.ts",
+        "line": 7,
+        "endLine": 15
+      },
+      "expectedCategory": "correctness",
+      "expectedSeverity": "low",
+      "expectedStatus": "refuted",
+      "evidence": {
+        "contentHash": "11ab32ae708cb497ea848f07ae07f2081577908b8b8ae87701728cb7e8964e05",
+        "excerpt": "export function computeDiscount"
+      }
+    }
+  ]
+}

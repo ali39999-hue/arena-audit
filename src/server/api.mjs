@@ -10,6 +10,7 @@
 
 import { createServer } from 'node:http';
 import { FINDING_STATUSES } from '../core/schemas.mjs';
+import { COMPLIANCE_PROFILES, evaluatePolicy } from './compliance.mjs';
 
 const RESOLUTIONS = ['fixed', 'reopened', 'regressed', 'accepted_risk', 'false_positive'];
 const ROLE_RANK = { viewer: 1, triager: 2, admin: 3 };
@@ -76,6 +77,16 @@ export function handleRequest(store, { method, url, headers = {}, body = null },
     if (!t) return json(404, { error: 'token not found' });
     store.audit(actor.id, 'revoke-token', seg[2]);
     return json(200, t);
+  }
+
+  // ── Enterprise Compliance & Policies (STEP 7-4) ──
+  if (path === '/api/compliance/profiles' && method === 'GET') {
+    return json(200, COMPLIANCE_PROFILES);
+  }
+  if (path === '/api/policy/evaluate' && method === 'POST') {
+    const { findings = [], gates = [], profileName = 'OWASP-Top10' } = body || {};
+    const result = evaluatePolicy({ findings, gates, profileName });
+    return json(200, result);
   }
 
   // ── Audit log (admin only, P16-10) ──

@@ -24,6 +24,8 @@ jobs:
         run: npm run eval -- --generate 40 --seed 42
       - name: Evaluation Lab — mock-LLM pipeline benchmark (P10 gate)
         run: npm run eval -- --pipeline 28 --seed 42
+      - name: Self-Audit — Arena audits Arena (STEP 6 release gate)
+        run: npm run self-audit
       - name: CLI smoke — help
         run: node bin/arena-audit.mjs --help
       - name: CLI smoke — self gates-only audit on a fixture repo

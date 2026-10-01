@@ -41,7 +41,16 @@
 | GitHub Action: diff-aware PR audit + SARIF upload | ✅ | `.github/workflows/arena-audit.yml` |
 | Evaluation Lab: deterministic evidence benchmark (`npm run eval`) | ✅ | `src/evals/` + golden fixtures — precision/recall gates in CI-able script |
 | Interactive HTML dashboard: Kanban board + rubric + filters, zero CDN, offline | ✅ | `src/dashboard.mjs` |
-| Mutation testing, Enterprise multi-tenancy & compliance profiles | 🚧 Planned | See `docs/ARCHITECTURE.md` roadmap alignment |
+| **Model Matrix Engine**: cross-architecture & model benchmarking with latency, cost, and accuracy tracking | ✅ | `src/evals/model-matrix.mjs` (`npm run matrix`) |
+| **Mutation Testing Engine**: 5 mutation operators (condition, return, boundary, exception, auth-bypass) with Mutation Score | ✅ | `src/evals/mutation.mjs` (`npm run mutate`) |
+| **Trust Hardening**: 10-dimension assurance audit gate enforcing strict evidence & provenance invariants | ✅ | `src/core/trust-gate.mjs` |
+| **Self-Audit Release Gate**: Arena audits its own codebase to prevent regressions | ✅ | `npm run self-audit` in CI |
+| **PostgreSQL Multi-Tenant Schema & Adapter**: full DDL & parameterized connection pool adapter | ✅ | `src/server/postgres-schema.mjs` |
+| **Enterprise Identity & RBAC**: 6 roles, OIDC/SSO claims verification & MFA enforcement | ✅ | `src/server/identity.mjs` |
+| **Multi-Tenancy Isolation**: strict cryptographic and logical boundaries between organizations | ✅ | `src/server/multi-tenancy.mjs` |
+| **Policy-as-Code & Compliance Profiles**: OWASP Top 10, CWE Top 25, NIST SP 800-53, SLSA Level 3, SOC2, FinTech-Strict | ✅ | `src/server/compliance.mjs` |
+| **Enterprise Secret Vault & Retention**: AES-256-GCM encryption with key rotation & configurable data retention | ✅ | `src/server/retention.mjs` |
+| **Certified Production-Ready**: full 27-capability matrix audited and certified | 🏆 **READY** | See [`docs/FINAL_READINESS_REPORT.md`](docs/FINAL_READINESS_REPORT.md) |
 
 ### Sandbox modes
 

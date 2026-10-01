@@ -747,6 +747,20 @@ export function generateDashboardHtml(data) {
 </html>`;
 }
 
+function statusLabel(s) {
+  const map = {
+    verified: 'تأیید شده ✓',
+    refuted: 'رد شده ✗',
+    inconclusive: 'نامعین ؟',
+    invalid: 'بی‌اعتبار (شواهد یافت نشد)',
+    stale: 'کهنه (کد تغییر کرده)',
+    candidate: 'کاندید',
+    accepted_risk: 'ریسک پذیرفته‌شده',
+    false_positive: 'خطای کاذب',
+  };
+  return map[s] || s;
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)

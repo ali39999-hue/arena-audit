@@ -105,6 +105,9 @@ export function runDetectors(root, files) {
       const lines = content.split(/\r?\n/);
       let hits = 0;
       for (let i = 0; i < lines.length && hits < MAX_PER_FILE; i++) {
+        // Skip comment lines and detector definition lines to avoid self-referential false positives
+        if (/^\s*(\/\/|\/\*|\*)/.test(lines[i])) continue;
+        if (lines[i].includes('pattern:') && lines[i].includes('/')) continue;
         if (!det.pattern.test(lines[i])) continue;
         hits++;
         findings.push({

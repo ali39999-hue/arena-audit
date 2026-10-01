@@ -86,8 +86,9 @@ export function isStale(root, evidence) {
  * P2-05 — Evidence Store: collects evidence, assigns ids, exposes provenance.
  */
 export class EvidenceStore {
-  constructor(root) {
+  constructor(root, commit = null) {
     this.root = root;
+    this.commit = commit;
     this.map = new Map();
   }
 
@@ -98,7 +99,7 @@ export class EvidenceStore {
       ? {
           id: `ev_${randomUUID().slice(0, 8)}`,
           type: 'source',
-          commit: null,
+          commit: this.commit || null,
           path: located.file,
           startLine: located.startLine,
           endLine: located.endLine,

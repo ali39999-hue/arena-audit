@@ -92,19 +92,30 @@ never silently dropped.
 
 ## Roadmap alignment
 
-Implemented now: Phase 0 (contract/schemas), Phase 1 (repo intelligence),
-Phase 2 (evidence engine), Phase 3 (gate registry), Phase 4 (Tree-sitter AST
-parsing for JS/TS/TSX/Python with AST cache, scope-aware caller/callee,
-structural queries, and deterministic heuristic fallback), Phase 4-gate
-(deterministic detector layer), Phase 5 (bounded parallel orchestrator),
-Phase 6 (evidence-based verification), Phase 7 (fingerprint/dedupe), Phase 8
-(scoring 2.0), Phase 9 (sandbox: env hardening + Docker executor), Phase 10-core
-(evaluation lab: seeded dataset generator + detector precision/recall/F1 metrics,
-CI-gated), Phase 11 (diff-aware audit), Phase 12 (dashboard/CI/SARIF/Checks/PR
-comments), Phase 13 (suggested-only remediation: confidence factors + human
-approval workflow), Phase 14 (baseline/regression), Phase 19 (telemetry),
-Phase 15-v1 (control plane: JSON-file store, REST API, web dashboard, CLI push).
+Implemented and Certified (v3.0.0):
+- Phase 0: Contract-first versioned schemas (AuditRun, Finding, Evidence, EngineConfig)
+- Phase 1: Repository Intelligence (LLM-free file indexer, languages, frameworks, pm, git, deps, tests, CI)
+- Phase 2: Evidence Engine (SHA-256 content hashing, line-exact source locator, evidence store, stale detection)
+- Phase 3: Deterministic Gate System (tsc, eslint, vitest, jest, semgrep, gitleaks)
+- Phase 4: Tree-sitter AST parsing for JS/TS/TSX/Python with AST cache, scope-aware caller/callee, structural queries, and heuristic fallback
+- Phase 4-gate: Deterministic detector layer (credentials, eval, SQL string concat, XSS, tokens, empty catch, float math)
+- Phase 5: Bounded parallel orchestrator with worker pool concurrency
+- Phase 6: Evidence-anchored adversarial verification (attack/defend on real excerpts)
+- Phase 7: Finding intelligence (fingerprinting, deduplication, baseline tracking)
+- Phase 8: Scoring 2.0 (NOT CHECKED ≠ PASS, coverage weighting)
+- Phase 9: Sandbox security (environment secret stripping + Docker isolated container runner)
+- Phase 10: Evaluation Lab (versioned 8-category golden dataset, seeded benchmark, LLM-judged evaluator)
+- Phase 10-ext: Model Matrix Engine (cross-model & architecture comparison, model-matrix.json/html)
+- Phase 10-mut: Mutation Testing Engine (condition, return, boundary, exception, auth bypass operators & mutation score)
+- Phase 11: Diff-aware audit (--diff / --target with transitive impact expansion)
+- Phase 12: CI/CD integration (SARIF 2.1.0, GitHub Actions, Check Runs, idempotent PR comments)
+- Phase 13: Suggested-only remediation with worktree validation, confidence factors & human approval workflow
+- Phase 14: Baseline and regression intelligence
+- Phase 15: Enterprise Control Plane (PostgreSQL multi-tenant schema & adapter, JSON store, REST API, web dashboard, CLI push)
+- Phase 16: Enterprise Identity & RBAC (6 roles, OIDC/SSO verification, MFA enforcement, tenant isolation, audit logging)
+- Phase 17: Policy-as-Code & Compliance Profiles (OWASP Top 10, CWE Top 25, NIST SP 800-53, SLSA Level 3, SOC2, FinTech-Strict)
+- Phase 18: Secret Vault (AES-256-GCM encryption with key rotation) & Data Retention Policies
+- Phase 19: Observability and run-level telemetry (spans, durations, telemetry.json)
+- Phase 20: Self-Audit Release Gate (Arena audits Arena in CI)
 
-Next up (per backlog): LLM-judged eval datasets and model matrix (P10-02..04),
-mutation testing (P10/STEP 4), trust hardening audit (STEP 5), and enterprise
-control plane (PostgreSQL, RBAC, multi-tenancy, compliance profiles).
+All 27 capabilities are certified as Production-Ready in `docs/FINAL_READINESS_REPORT.md`.

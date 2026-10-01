@@ -36,6 +36,7 @@ import { remediateFinding } from '../src/remediation/patch.mjs';
 import { computePatchConfidence } from '../src/remediation/confidence.mjs';
 import { runDetectors } from '../src/detectors/detectors.mjs';
 import { createTelemetry } from '../src/observability/telemetry.mjs';
+import { enforceTrustInvariants } from '../src/core/trust-gate.mjs';
 import { buildBaseline, saveBaseline, loadBaseline, classifyAgainstBaseline } from '../src/findings/baseline.mjs';
 import {
   decideConclusion, buildCheckPayload, buildPrComment,
@@ -247,7 +248,7 @@ async function main() {
     console.log(`  ${color.dim}No machine gates detected — they will be reported as NOT_AVAILABLE, never as a pass.${color.reset}`);
   }
 
-  const evidence = new EvidenceStore(targetDir);
+  const evidence = new EvidenceStore(targetDir, run.commit);
 
   // ── Phase 2b: Deterministic Detectors (P4 gate) — real findings, zero LLM ──
   const detSpan = telemetry.start('phase', 'detectors');
@@ -508,7 +509,7 @@ async function main() {
   }
 
   const scores = computeScores(allGates, findings);
-  finishRun({ run, root: targetDir, snapshot, gates: allGates, findings, evidence: evidence.toJSON(), scores, outputDir, lenses: plan.lenses, judge, projectName, sandbox,
+  finishRun({ run, root: targetDir, snapshot, gates: allGates, findings, evidenceStore: evidence, evidence: evidence.toJSON(), scores, outputDir, lenses: plan.lenses, judge, projectName, sandbox,
     scopeNote, delta, scopeDropped, symIndex, importGraph, remediation, telemetry, baselineSummary });
 
   // ── Baseline save (P14-04) ──
@@ -597,14 +598,19 @@ function readDocs(root) {
 }
 
 /** Persist every deliverable + the audit-run manifest, and close the run. */
-function finishRun({ run, root, snapshot, gates, findings, evidence, scores, outputDir, lenses, judge, projectName, sandbox: sandboxMode = 'trusted',
+function finishRun({ run, root, snapshot, gates, findings, evidenceStore = null, evidence, scores, outputDir, lenses, judge, projectName, sandbox: sandboxMode = 'trusted',
   scopeNote = 'full', delta = null, scopeDropped = 0, symIndex = { symbols: new Map() }, importGraph = { importers: new Map() }, remediation = [],
   telemetry = null, baselineSummary = { mode: 'none' } }) {
-  // Final stale-evidence sweep: a finding whose evidence no longer matches is stale.
-  for (const f of findings) {
-    if (f.evidenceRefs && f.evidenceRefs.length && f.status === 'verified') {
-      const ev = evidence.get ? evidence.get(f.evidenceRefs[0]) : null;
-      if (ev && ev.type === 'source' && isStale(root, ev)) f.status = 'stale';
+  // Trust Invariants Enforcement (STEP 5): degrade any verified finding lacking proof
+  if (evidenceStore) {
+    enforceTrustInvariants({ root, findings, evidenceStore, commit: run.commit });
+  } else {
+    // Final stale-evidence sweep: a finding whose evidence no longer matches is stale.
+    for (const f of findings) {
+      if (f.evidenceRefs && f.evidenceRefs.length && f.status === 'verified') {
+        const ev = evidence.find ? evidence.find(e => e.id === f.evidenceRefs[0]) : null;
+        if (ev && ev.type === 'source' && isStale(root, ev)) f.status = 'stale';
+      }
     }
   }
   run.status = 'completed';
