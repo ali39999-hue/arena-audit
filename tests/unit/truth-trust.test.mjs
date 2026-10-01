@@ -33,7 +33,7 @@ test('capability registry: statuses valid, counts consistent, no duplicate ids',
   assert.equal(capabilitiesByStatus('PLANNED').every((c) => c.status === 'PLANNED'), true);
 });
 
-test('doc consistency gate passes on the real repo (no drift)', () => {
+test('doc consistency gate passes on the real repo (no drift)', { timeout: 20000 }, () => {
   const res = checkDocumentation(repoRoot);
   assert.equal(res.ok, true, res.problems.join('; '));
 });
@@ -50,7 +50,7 @@ test('doc consistency gate catches drift (version mismatch + missing evidence)',
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('release manifest: counts + reproducibility manifest hash stability', () => {
+test('release manifest: counts + reproducibility manifest hash stability', { timeout: 20000 }, () => {
   const manifest = buildReleaseManifest(repoRoot, { commit: 'abc' });
   assert.equal(manifest.version, JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf-8')).version);
   assert.ok(manifest.counts.implemented >= 20);
@@ -205,7 +205,7 @@ test('true mutation: KILLED when the real test suite fails, with dual scores', {
   assert.equal(wt.trim().split('\n').filter((l) => l.startsWith('worktree ')).length, 1);
 });
 
-test('true mutation outside git reports unavailable honestly', () => {
+test('true mutation outside git reports unavailable honestly', { timeout: 20000 }, () => {
   const plain = mkdtempSync(join(tmpdir(), 'arena-plain-'));
   const report = runTrueMutationTesting({ root: plain, files: [], limit: 1 });
   assert.equal(report.available, false);
@@ -214,7 +214,7 @@ test('true mutation outside git reports unavailable honestly', () => {
 
 // ── P8: Snapshot sandbox ─────────────────────────────────────────────────────
 
-test('snapshot workspace copies sources, skips node_modules and symlinks', () => {
+test('snapshot workspace copies sources, skips node_modules and symlinks', { timeout: 20000 }, () => {
   const src = mkdtempSync(join(tmpdir(), 'arena-snap-src-'));
   mkdirSync(join(src, 'app'), { recursive: true });
   writeFileSync(join(src, 'app', 'index.js'), 'export const x = 1;\n');
@@ -232,7 +232,7 @@ test('snapshot workspace copies sources, skips node_modules and symlinks', () =>
   rmSync(src, { recursive: true, force: true });
 });
 
-test('snapshot path containment rejects escapes', () => {
+test('snapshot path containment rejects escapes', { timeout: 20000 }, () => {
   const snap = createSnapshotWorkspace(mkdtempSync(join(tmpdir(), 'arena-snap2-')));
   assert.equal(assertPathInsideSnapshot(snap.workspace, 'src/a.ts'), true);
   assert.equal(assertPathInsideSnapshot(snap.workspace, '../../etc/passwd'), false);

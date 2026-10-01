@@ -10,7 +10,7 @@ if (git(['add', '-A']).code !== 0) process.exit(1);
 const tree = git(['write-tree']);
 const parent = git(['rev-parse', 'HEAD']);
 if (tree.code !== 0 || parent.code !== 0) { console.error('plumbing failed'); process.exit(1); }
-const msg = 'fix(ci): skip slow git-worktree mutation test on Windows CI (canonical gate is Ubuntu)';
+const msg = 'fix(ci): per-test timeouts on heavy truth-trust tests so a slow/hung subtest cannot stall the file';
 const commit = git(['commit-tree', tree.out.trim(), '-p', parent.out.trim(), '-m', msg]);
 if (commit.code !== 0) { console.error('commit-tree failed', commit.out); process.exit(1); }
 const upd = git(['update-ref', 'refs/heads/main', commit.out.trim()]);
