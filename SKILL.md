@@ -1,54 +1,71 @@
 ---
 name: arena-audit
-description: "Run an in-depth multi-agent arena tournament audit on the current codebase. Compatible with all AI agent environments (ZCode, Claude Code, Cursor, Windsurf, Terminal). Discovers project machine quality gates (typecheck, lint, test), extracts domain-specific audit lenses from local project rules (AGENTS.md, CLAUDE.md, README.md), runs parallel specialist reviewers paired with independent verifiers to eliminate false positives, and delivers a prioritized judge's report. Trigger whenever the user mentions `/arena-audit`, 'arena audit', 'ممیزی آرنا', 'ممیزی پروژه', 'audit repo', 'ممیزی کل کدبیس', or asks for a thorough multi-agent codebase tournament audit."
+description: "Run an in-depth evidence-anchored, multi-agent arena tournament audit on the current codebase. Works in ALL AI agent environments (ZCode, Claude Code, Cursor, Windsurf, Terminal) and with ZERO API keys for the deterministic core (machine gates, detectors, evidence, SARIF, dashboard). Trigger whenever the user mentions `/arena-audit`, 'arena audit', 'ممیزی آرنا', 'ممیزی پروژه', 'audit repo', 'ممیزی کل کدبیس', or asks for a thorough multi-agent codebase audit."
 ---
 
 # /arena-audit
 
-Execute a multi-agent tournament audit on the current project using the **Arena pattern** (adapted from `arena-skill` and dynamic workflows).
+Execute an evidence-anchored multi-agent tournament audit on the current project.
 
-## What it does
+## What it does (works with or without an LLM key)
 
-1. **Machine Quality Gates Discovery:** Detects and executes real project validation binaries (`tsc`, `eslint`, `vitest`, `jest`) directly, recording actual exit codes and stdout/stderr as hard evidence.
-2. **Dynamic Lens Extraction:** Reads repository documentation (`AGENTS.md`, `CLAUDE.md`, `README.md`) to discover 4–7 custom domain lenses and invariants tailored to this specific codebase.
-3. **Parallel Specialist Reviewers:** Reviews the codebase through each lens concurrently with line citations (`path:line`) and code excerpts.
-4. **Independent Verifiers (Attack/Defend):** Each candidate finding is routed to a fresh subagent to reproduce and verify independently, eliminating false positives and AI hallucinations.
-5. **Principal Judge & Board Report:** Deduplicates findings, ranks them by severity, and renders both a live board/manifest and a comprehensive markdown report.
+1. **Machine Quality Gates** — real exit codes from `tsc` / `eslint` / `vitest` / `jest` (and `semgrep` / `gitleaks` if installed).
+2. **Deterministic Detectors** — zero-LLM findings (credentials, eval, SQL concat, XSS surface, localStorage tokens, empty catch, money float math), each anchored to a SHA-256 hashed code excerpt.
+3. **Semantic Analysis** — Tree-sitter AST for JS/TS/TSX/Python: symbol index, import graph, caller/callee, impact analysis.
+4. **Independent Verification** — every finding is challenged against real code; states: verified / refuted / inconclusive / invalid.
+5. **Deliverables** — `index.html` dashboard (Kanban + rubric), `REPORT.md`, `report.sarif`, `audit-run.json` (reproducibility manifest).
 
 ---
 
-## Execution Across Different Harnesses
+## How to execute
 
-### 1. In ZCode (Dynamic Workflow Engine)
-If `CreateWorkflow` tool is available:
-```json
-{
-  "name": "ممیزی آرنا — کل پروژه",
-  "saved": {
-    "name": "arena-audit"
-  }
-}
-```
+### 1. Locate or clone the engine
 
-### 2. In Claude Code / Cursor / Windsurf / Terminal
-If running in an environment without `CreateWorkflow`:
-
-**Option A (Direct CLI Runner with local/remote LLM):**
-Run the zero-dependency CLI runner:
 ```bash
-# Using npx or node
-npx arena-audit
-# Or with your preferred provider key:
-ANTHROPIC_API_KEY=... npx arena-audit
-OPENAI_API_KEY=... npx arena-audit
-DEEPSEEK_API_KEY=... npx arena-audit
+# If not cloned yet:
+git clone https://github.com/ali39999-hue/arena-audit.git
 ```
 
-**Option B (Agent-Assisted Tournament inside Claude Code / Cursor):**
-1. Run machine gates first:
-   ```bash
-   node <path-to-arena-audit>/bin/arena-audit.mjs --gates-only
-   ```
-2. Spawn specialist subagent tasks for each project domain lens.
-3. For every finding reported, spawn a fresh verifier task to confirm with code evidence.
-4. Generate the final markdown report summarizing verified vs unconfirmed findings.
+Let `ARENA_HOME` be the arena-audit clone directory (default: `C:\Users\Lenovo\arena-audit` on this machine).
+
+### 2. Choose the mode
+
+**A. Deterministic core audit — NO API key required:**
+
+```bash
+node <ARENA_HOME>/bin/arena-audit.mjs . --gates-only --ui
+```
+
+Runs gates + detectors + evidence anchoring; produces the interactive dashboard, SARIF and manifest. Use this when no LLM key is configured.
+
+**B. Full tournament with an LLM provider (if a key is set):**
+
+```bash
+# env: ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY / OLLAMA_HOST
+node <ARENA_HOME>/bin/arena-audit.mjs . --diff --reproduce --remediate --ui
+```
+
+Adds LLM lens planning, adversarial verification, per-finding reproduction, and suggested patches (worktree-validated, human-approved).
+
+**C. Diff-aware / targeted:**
+
+```bash
+node <ARENA_HOME>/bin/arena-audit.mjs . --diff origin/main     # PR mode
+node <ARENA_HOME>/bin/arena-audit.mjs . --target src/payments  # subtree
+```
+
+### 3. Read the results back to the user
+
+- `arena-audit-out/index.html` — dashboard path.
+- `REPORT.md` — executive verdict + verified/refuted/inconclusive findings.
+- Overall score or honest `N/A` (coverage %) — never present "not checked" as a pass.
+
+### In ZCode specifically
+
+If the `CreateWorkflow` tool and a saved global workflow `arena-audit` exist, prefer:
+
+```json
+{ "name": "ممیزی آرنا — کل پروژه", "saved": { "name": "arena-audit" } }
+```
+
+Otherwise use the CLI above (it is the current generation of the engine).
