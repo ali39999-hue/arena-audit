@@ -1,6 +1,6 @@
 {
   "name": "arena-audit",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Evidence-anchored multi-agent tournament codebase audit engine for any AI harness (Claude Code, Cursor, Windsurf, ZCode, CI/CD)",
   "main": "bin/arena-audit.mjs",
   "bin": {
@@ -9,7 +9,7 @@
   "type": "module",
   "scripts": {
     "start": "node bin/arena-audit.mjs",
-    "test": "node --test \"tests/unit/**/*.test.mjs\"",
+    "test": "node --test --test-timeout=15000 \"tests/unit/**/*.test.mjs\"",
     "smoke": "node bin/arena-audit.mjs --gates-only",
     "eval": "node src/evals/run-eval.mjs"
   },

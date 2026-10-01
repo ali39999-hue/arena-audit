@@ -12,15 +12,29 @@ import { createServer } from 'node:http';
 import { FINDING_STATUSES } from '../core/schemas.mjs';
 
 const RESOLUTIONS = ['fixed', 'reopened', 'regressed', 'accepted_risk', 'false_positive'];
+const ROLE_RANK = { viewer: 1, triager: 2, admin: 3 };
 
 export function handleRequest(store, { method, url, headers = {}, body = null }, opts = {}) {
   const token = opts.token || null;
   const u = new URL(url, 'http://localhost');
   const path = u.pathname.replace(/\/$/, '') || '/';
   const seg = path.split('/').filter(Boolean); // e.g. ['api','projects','prj_x','runs']
-  const auth = token
-    ? (headers.authorization === `Bearer ${token}`)
-    : true; // loopback-only servers run without token
+
+  // P16-lite: authenticate via token registry (bootstrap token = admin).
+  // Security model: when the server runs WITHOUT a token it must be bound to
+  // loopback (enforced in createControlPlane) — anonymous requests then act
+  // as admin so the local CLI `--push` flow keeps working. With a token set,
+  // the registry is the only way in and roles apply.
+  const bearer = (headers.authorization || '').startsWith('Bearer ')
+    ? headers.authorization.slice(7) : null;
+  const actor = token
+    ? store.authenticate(bearer, token)
+    : (bearer
+      ? (store.authenticate ? store.authenticate(bearer, null) : null)
+      : { id: 'anonymous-loopback', role: 'admin' });
+  const auth = Boolean(actor);
+  const rank = actor ? ROLE_RANK[actor.role] || 0 : 0;
+  const requireRole = (min) => rank >= ROLE_RANK[min];
 
   const json = (status, body_) => ({ status, body: body_ });
 
@@ -30,18 +44,51 @@ export function handleRequest(store, { method, url, headers = {}, body = null },
 
   // ── POST /api/ingest — one-call push from the CLI ──
   if (method === 'POST' && path === '/api/ingest') {
+    if (!requireRole('triager')) return json(403, { error: 'requires triager role' });
     const { project, audit } = body || {};
     if (!project?.name || !audit?.run) return json(400, { error: 'project.name and audit.run are required' });
     const prj = store.upsertProject({ name: project.name, repository: project.repository || null });
     audit.projectId = prj.id;
     const { runId, created } = store.insertRun(audit);
     const ingested = store.upsertFindings(runId, audit.findings || []);
+    store.audit(actor.id, 'ingest', runId);
     return json(201, { runId, created, findingsIngested: ingested, projectId: prj.id });
+  }
+
+  // ── Token management (admin only, P16-lite) ──
+  if (path === '/api/tokens' && method === 'POST') {
+    if (!requireRole('admin')) return json(403, { error: 'requires admin role' });
+    try {
+      const created = store.createToken(body || {});
+      store.audit(actor.id, 'create-token', created.id);
+      return json(201, created);
+    } catch (e) {
+      return json(400, { error: e.message });
+    }
+  }
+  if (path === '/api/tokens' && method === 'GET') {
+    if (!requireRole('admin')) return json(403, { error: 'requires admin role' });
+    return json(200, store.listTokens());
+  }
+  if (seg[1] === 'tokens' && seg[2] && method === 'DELETE') {
+    if (!requireRole('admin')) return json(403, { error: 'requires admin role' });
+    const t = store.revokeToken(seg[2]);
+    if (!t) return json(404, { error: 'token not found' });
+    store.audit(actor.id, 'revoke-token', seg[2]);
+    return json(200, t);
+  }
+
+  // ── Audit log (admin only, P16-10) ──
+  if (path === '/api/auditlog' && method === 'GET') {
+    if (!requireRole('admin')) return json(403, { error: 'requires admin role' });
+    return json(200, store.getAuditLog());
   }
 
   // ── Projects ──
   if (method === 'POST' && path === '/api/projects') {
+    if (!requireRole('triager')) return json(403, { error: 'requires triager role' });
     if (!body?.name) return json(400, { error: 'name is required' });
+    store.audit(actor.id, 'create-project', body.name);
     return json(201, store.upsertProject(body));
   }
   if (method === 'GET' && path === '/api/projects') return json(200, store.listProjects());
@@ -74,11 +121,13 @@ export function handleRequest(store, { method, url, headers = {}, body = null },
     }));
   }
   if (seg[1] === 'findings' && seg[2] && seg[3] === 'resolve' && method === 'POST') {
+    if (!requireRole('triager')) return json(403, { error: 'requires triager role' });
     if (!RESOLUTIONS.includes(body?.resolution)) {
       return json(400, { error: `resolution must be one of ${RESOLUTIONS.join('|')}` });
     }
     const f = store.resolveFinding(seg[2], body.resolution, body.note || null);
     if (!f) return json(404, { error: 'finding not found' });
+    store.audit(actor.id, `resolve:${body.resolution}`, seg[2]);
     return json(200, f);
   }
   if (seg[1] === 'findings' && seg[2] && method === 'GET') {

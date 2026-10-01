@@ -12,6 +12,9 @@
 | Machine quality gates (tsc, eslint, vitest, jest, semgrep, gitleaks) with real exit codes | ✅ | `src/gates/registry.mjs` — plugin-style `detect()/run()`, normalized results |
 | **Deterministic detector layer**: 8 LLM-free detectors (credentials, eval, SQL concat, XSS surface, localStorage tokens, empty catch, money float math) — works with NO API key | ✅ | `src/detectors/detectors.mjs` — line-exact, evidence-anchored by construction |
 | **Evaluation Lab v2**: seeded bug generator (reproducible by seed) + precision/recall/F1/FP-rate per category, CI-gated (`npm run eval -- --generate 40`) | ✅ | `src/evals/` — current seeded run: P 1.000 · R 1.000 · FP 0.000 |
+| **Mock-LLM pipeline benchmark** (X-16 + P10): full tournament measured without an API — proven claim: anchoring pins precision at 1.0; recall tracks verifier reliability | ✅ | `npm run eval -- --pipeline 28` |
+| **Control-plane RBAC** (P16-lite): role tokens (admin/triager/viewer), sha256-stored, revocable; anonymous writes only on loopback | ✅ | `src/server/store.mjs` + route guards |
+| **Audit log** (P16-10): every mutating action recorded (who/what/when), admin-only read | ✅ | `GET /api/auditlog` |
 | Repository intelligence without any LLM | ✅ | `src/intake/repo-snapshot.mjs` — indexer, languages, frameworks, pm, git, deps, tests, CI |
 | Evidence Engine: every finding anchored to a SHA-256 hashed code excerpt | ✅ | `src/evidence/evidence-store.mjs` — unresolvable refs become `invalid`, never verified |
 | Stale evidence detection (code changed → finding flips to `stale`) | ✅ | `isStale()` + final sweep in the runner |

@@ -15,6 +15,7 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runEvidenceEval, runDetectorEval } from './eval.mjs';
 import { generateDataset } from './dataset.mjs';
+import { runPipelineEval } from './pipeline-eval.mjs';
 import { indexFiles } from '../intake/repo-snapshot.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -22,12 +23,13 @@ const args = process.argv.slice(2);
 
 let fixtureRoot = resolve(__dirname, '..', '..', 'tests', 'fixtures', 'eval-golden');
 let minPrecision = 1.0, minRecall = 1.0;
-let generate = null, seed = 42, keep = false, outReport = null;
+let generate = null, pipeline = null, seed = 42, keep = false, outReport = null;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--min-precision') minPrecision = parseFloat(args[++i]);
   else if (args[i] === '--min-recall') minRecall = parseFloat(args[++i]);
   else if (args[i] === '--generate') generate = parseInt(args[++i], 10);
+  else if (args[i] === '--pipeline') pipeline = parseInt(args[++i], 10);
   else if (args[i] === '--seed') seed = parseInt(args[++i], 10);
   else if (args[i] === '--keep') keep = true;
   else if (args[i] === '--report') outReport = resolve(process.cwd(), args[++i]);
@@ -79,6 +81,35 @@ if (generate) {
 
   if (outReport || keep) {
     const report = { schemaVersion: 1, seed, size: generate, detector: det, at: new Date().toISOString() };
+    const p = outReport || join(root, 'eval-report.json');
+    writeFileSync(p, JSON.stringify(report, null, 2), 'utf-8');
+    console.log(`  report: ${p}`);
+  }
+  if (!keep) rmSync(root, { recursive: true, force: true });
+}
+
+// ── Benchmark 3: full pipeline with mock LLM (P10-02..04 core) ──
+if (pipeline) {
+  const root = resolve(process.cwd(), `.arena-eval-pipe-${seed}`);
+  rmSync(root, { recursive: true, force: true });
+  mkdirSync(root, { recursive: true });
+  const dataset = generateDataset(root, { size: pipeline, seed });
+
+  console.log(`\nBenchmark 3 — Full tournament pipeline with mock LLM (${pipeline} ground-truth bugs, seed ${seed})`);
+  // Perfect verifier: precision must be exactly 1 (anchoring guarantees it).
+  const perfect = await runPipelineEval(dataset, { seed, verifierReliability: 1.0 });
+  console.log(`  perfect verifier: precision ${fmt(perfect.precision)} · recall ${fmt(perfect.recall)} · hallucinated ${perfect.hallucinated} → eliminated ${perfect.hallucinationEliminated} · FP ${perfect.verifiedFalsePositive}`);
+  if (perfect.precision !== 1 || perfect.hallucinationEliminated !== perfect.hallucinated || perfect.recall < 0.99) failed = true;
+
+  // Imperfect verifier: recall must track the reliability ceiling; precision must stay 1.
+  const reliability = 0.8;
+  const imperfect = await runPipelineEval(dataset, { seed, verifierReliability: reliability });
+  console.log(`  verifier reliability ${reliability}: precision ${fmt(imperfect.precision)} · recall ${fmt(imperfect.recall)} (ceiling ${reliability}) · refuted ${imperfect.refuted}`);
+  if (imperfect.precision !== 1) failed = true;
+  if (imperfect.recall < reliability - 0.1 || imperfect.recall > reliability + 0.1) failed = true;
+
+  if (outReport || keep) {
+    const report = { schemaVersion: 1, seed, size: pipeline, perfect, imperfect, at: new Date().toISOString() };
     const p = outReport || join(root, 'eval-report.json');
     writeFileSync(p, JSON.stringify(report, null, 2), 'utf-8');
     console.log(`  report: ${p}`);

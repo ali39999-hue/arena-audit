@@ -9,12 +9,12 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 export class JsonStore {
   constructor(filePath) {
     this.filePath = filePath;
-    this.data = { schemaVersion: 1, projects: {}, runs: {}, findings: {} };
+    this.data = { schemaVersion: 1, projects: {}, runs: {}, findings: {}, tokens: {}, auditLog: [] };
     if (existsSync(filePath)) {
       try {
         this.data = { ...this.data, ...JSON.parse(readFileSync(filePath, 'utf-8')) };
@@ -152,4 +152,56 @@ export class JsonStore {
     this.persist();
     return f;
   }
+
+  // ── P16-lite: token registry with roles + audit log ───────────────────────
+  // Roles: admin (manage tokens + everything) > triager (resolve + ingest)
+  //       > viewer (read-only). Bootstrap token (env) is always admin.
+  // Raw tokens are shown once at creation; only sha256 hashes are stored.
+
+  createToken({ name, role }) {
+    if (!['admin', 'triager', 'viewer'].includes(role)) {
+      throw new Error(`role must be admin|triager|viewer, got: ${role}`);
+    }
+    const raw = `arena_${randomUUID().replace(/-/g, '')}`;
+    const id = `tok_${randomUUID().slice(0, 8)}`;
+    this.data.tokens[id] = {
+      id, name: name || id, role,
+      tokenHash: createHash('sha256').update(raw, 'utf-8').digest('hex'),
+      revoked: false,
+      createdAt: new Date().toISOString(),
+    };
+    this.persist();
+    return { id, name, role, raw }; // raw is returned exactly once
+  }
+
+  listTokens() {
+    return Object.values(this.data.tokens).map(({ tokenHash, ...rest }) => rest);
+  }
+
+  revokeToken(id) {
+    const t = this.data.tokens[id];
+    if (!t) return null;
+    t.revoked = true;
+    t.revokedAt = new Date().toISOString();
+    this.persist();
+    return t;
+  }
+
+  /** Resolve a bearer token to {id, role} — bootstrap token is implicit admin. */
+  authenticate(bearerToken, bootstrapToken = null) {
+    if (!bearerToken) return null;
+    if (bootstrapToken && bearerToken === bootstrapToken) return { id: 'bootstrap', role: 'admin' };
+    const hash = createHash('sha256').update(bearerToken, 'utf-8').digest('hex');
+    const t = Object.values(this.data.tokens).find((x) => x.tokenHash === hash && !x.revoked);
+    return t ? { id: t.id, role: t.role } : null;
+  }
+
+  /** P16-10: who did what, when. */
+  audit(actor, action, target) {
+    this.data.auditLog.push({ actor, action, target, at: new Date().toISOString() });
+    if (this.data.auditLog.length > 1000) this.data.auditLog = this.data.auditLog.slice(-1000);
+    this.persist();
+  }
+
+  getAuditLog() { return [...this.data.auditLog].reverse(); }
 }

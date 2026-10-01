@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 /** mulberry32 — tiny seeded PRNG. */
-function rng(seed) {
+export function rng(seed) {
   let a = seed >>> 0;
   return () => {
     a |= 0; a = (a + 0x6D2B79F5) | 0;

@@ -85,23 +85,32 @@ test('auth: with token set, missing/wrong bearer is 401; health stays open', () 
 // ── HTTP server integration (ephemeral port) ─────────────────────────────────
 
 test('control plane serves dashboard + API over real HTTP, then shuts down', async () => {
-  const server = await createControlPlane(store, { port: 0, dashboard: '<h1>arena-cp-test</h1>' });
+  const server = await createControlPlane(store, { port: 0, token: 'sekrit', dashboard: '<h1>arena-cp-test</h1>' });
   const { port } = server.address();
+  const authed = { 'Content-Type': 'application/json', authorization: 'Bearer sekrit' };
 
   const page = await fetch(`http://127.0.0.1:${port}/`);
   assert.match(await page.text(), /arena-cp-test/);
 
-  const ing = await fetch(`http://127.0.0.1:${port}/api/ingest`, {
+  // Anonymous mutation with token-protected server → 401
+  const anon = await fetch(`http://127.0.0.1:${port}/api/ingest`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: { name: 'demo' }, audit: mkAudit() }),
+  });
+  assert.equal(anon.status, 401);
+
+  const ing = await fetch(`http://127.0.0.1:${port}/api/ingest`, {
+    method: 'POST', headers: authed,
     body: JSON.stringify({ project: { name: 'demo' }, audit: mkAudit() }),
   });
   assert.equal(ing.status, 201);
 
-  const list = await fetch(`http://127.0.0.1:${port}/api/findings?severity=high`);
+  const list = await fetch(`http://127.0.0.1:${port}/api/findings?severity=high`, { headers: authed });
   const listBody = await list.json();
   assert.equal(listBody.length, 1);
 
-  server.close();
+  // Release keep-alive connections BEFORE closing, then close once.
+  server.closeAllConnections?.();
   await new Promise((r) => server.close(r));
 });
 
