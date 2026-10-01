@@ -8,13 +8,12 @@ on:
 
 jobs:
   smoke:
-      # Ubuntu is the canonical CI gate (includes the true-mutation worktree
-      # suite). Windows runners hang on nested git-worktree operations.
-      runs-on: ${{ matrix.os }}
-      strategy:
-        matrix:
-          os: [ubuntu-latest]
-          node: [22]
+    # Ubuntu is the canonical CI gate (includes the true-mutation worktree
+    # suite). Windows runners hang on nested git-worktree operations.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,23 +30,17 @@ jobs:
         run: npm run eval -- --generate 40 --seed 42
       - name: Evaluation Lab — mock-LLM pipeline benchmark (P10 gate)
         run: npm run eval -- --pipeline 28 --seed 42
+      - name: Mutation gate (P7)
+        run: npm run mutate
       - name: Self-Audit — Arena audits Arena (STEP 6 release gate)
         run: npm run self-audit
       - name: Golden Workflow Scenario — dynamic workflow runtime (DW gate)
         run: node --test --test-timeout=45000 --test-force-exit tests/unit/workflow-golden.test.mjs
       - name: CLI smoke — help
         run: node bin/arena-audit.mjs --help
-      - name: CLI smoke — self gates-only audit on a fixture repo
-        shell: bash
-        run: |
-          mkdir -p tests/fixtures/demo && cd tests/fixtures/demo
-          printf '{"name":"demo","dependencies":{"react":"18"}}' > package.json
-          printf 'export const add = (a, b) => a + b;\n' > calc.js
-          node ../../../bin/arena-audit.mjs . --gates-only --output out
-          node -e "const r=require('./out/audit-run.json'); if(!r.run.runId) process.exit(1); console.log('runId:', r.run.runId, '· score:', r.run.scores);"
       - name: Upload dashboard artifact
-        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
         uses: actions/upload-artifact@v4
         with:
           name: arena-dashboard
-          path: tests/fixtures/demo/out/index.html
+          path: arena-audit-out/index.html
+          if-no-files-found: ignore

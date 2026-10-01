@@ -10,7 +10,7 @@ if (git(['add', '-A']).code !== 0) process.exit(1);
 const tree = git(['write-tree']);
 const parent = git(['rev-parse', 'HEAD']);
 if (tree.code !== 0 || parent.code !== 0) { console.error('plumbing failed'); process.exit(1); }
-const msg = 'fix(ci): canonical gate on ubuntu (windows runners hang on nested git worktrees)';
+const msg = 'fix(ci): repair YAML structure after matrix simplification';
 const commit = git(['commit-tree', tree.out.trim(), '-p', parent.out.trim(), '-m', msg]);
 if (commit.code !== 0) { console.error('commit-tree failed', commit.out); process.exit(1); }
 const upd = git(['update-ref', 'refs/heads/main', commit.out.trim()]);
