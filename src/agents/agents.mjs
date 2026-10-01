@@ -102,7 +102,7 @@ export async function planLenses({ provider, model, snapshot, docsContext }) {
  * Build a compact, deterministic evidence context for one lens:
  * repo facts + real excerpts of the most relevant source files.
  */
-export function buildEvidenceContext({ snapshot, files, locateSourceFn, lens }) {
+export function buildEvidenceContext({ snapshot, files, locateSourceFn, lens, semantic = null, diffText = null }) {
   const filesByFocus = files
     .filter((f) => /\.(ts|tsx|js|jsx|mjs|py|go|rs|java|kt)$/.test(f.path))
     .slice(0, 60);
@@ -123,8 +123,16 @@ export function buildEvidenceContext({ snapshot, files, locateSourceFn, lens }) 
     const loc = locateSourceFn(f.path, { contextLines: 0 });
     if (loc.status !== 'ok') return null;
     const lines = loc.excerpt.split('\n');
-    return `--- ${f.path} (${lines.length} lines shown) ---\n${lines.slice(0, 60).join('\n')}`;
+    // Semantic enrichment (P4-09): exports + importer count from the LLM-free index.
+    const sem = semantic
+      ? ` [symbols: ${(semantic.symbolsOf(f.path) || []).slice(0, 6).join(', ') || 'none'} · importedBy: ${semantic.importedBy(f.path).length}]`
+      : '';
+    return `--- ${f.path} (${lines.length} lines shown)${sem} ---\n${lines.slice(0, 60).join('\n')}`;
   }).filter(Boolean).join('\n\n');
+
+  const diffSection = diffText
+    ? `\n\nGIT DIFF (the changes under audit — focus your findings here):\n${diffText}`
+    : '';
 
   return [
     'REPOSITORY FACTS (deterministic):',
@@ -139,6 +147,7 @@ export function buildEvidenceContext({ snapshot, files, locateSourceFn, lens }) 
     '',
     'SOURCE EVIDENCE (real excerpts from the repo — cite these with path:line):',
     excerpts || '(no matching source files found)',
+    diffSection,
   ].join('\n');
 }
 

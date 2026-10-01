@@ -31,6 +31,11 @@ export function parseLocation(ref) {
 /** P2-02 — Source locator: resolve path:line into a hashed excerpt with context. */
 export function locateSource(root, ref, { contextLines = 4 } = {}) {
   const { file, startLine, endLine } = parseLocation(ref);
+  // Line-anchoring integrity (P2 gate): line 0 and lines beyond EOF are
+  // invalid anchors — a finding citing them can never be "verified".
+  if (startLine !== null && (startLine < 1 || (endLine !== null && endLine < startLine))) {
+    return { status: 'invalid_line', file, startLine, endLine };
+  }
   const full = resolve(root, file);
   if (!existsSync(full)) {
     return { status: 'missing_file', file, startLine, endLine };
@@ -42,6 +47,9 @@ export function locateSource(root, ref, { contextLines = 4 } = {}) {
     return { status: 'unreadable', file, startLine, endLine };
   }
   const lines = content.split(/\r?\n/);
+  if (startLine !== null && startLine > lines.length) {
+    return { status: 'invalid_line', file, startLine, endLine, fileLineCount: lines.length };
+  }
   const lo = Math.max(1, (startLine || 1) - contextLines);
   const hi = Math.min(lines.length, (endLine || startLine || 1) + contextLines);
   const excerptLines = [];

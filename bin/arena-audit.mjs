@@ -18,16 +18,20 @@ import { resolve, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
-import { createAuditRun, validateFinding, FINDING_STATUSES } from '../src/core/schemas.mjs';
+import { createAuditRun, validateFinding } from '../src/core/schemas.mjs';
 import { runPool } from '../src/core/concurrency.mjs';
 import { buildRepoSnapshot } from '../src/intake/repo-snapshot.mjs';
 import { EvidenceStore, locateSource, isStale } from '../src/evidence/evidence-store.mjs';
 import { runGates, normalizeGateResult } from '../src/gates/registry.mjs';
 import { planLenses, buildEvidenceContext, runSpecialist, runVerifier, runJudge } from '../src/agents/agents.mjs';
-import { detectProvider, callLLM, parseJSONFromText } from '../src/agents/llm.mjs';
+import { detectProvider } from '../src/agents/llm.mjs';
 import { dedupeFindings, computeScores } from '../src/findings/findings.mjs';
-import { sandboxPosture, assertSandboxPolicy } from '../src/sandbox/policy.mjs';
+import { sandboxPosture } from '../src/sandbox/policy.mjs';
 import { generateDashboardHtml } from '../src/dashboard.mjs';
+import { buildSymbolIndex, buildImportGraph, createSemanticQueries } from '../src/semantic/symbols.mjs';
+import { scopeFiles, gitDiffText } from '../src/git/delta.mjs';
+import { findRelatedTests, runTargetedTests } from '../src/verification/reproduce.mjs';
+import { toSarif } from '../src/outputs/sarif.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
@@ -57,6 +61,9 @@ let outputDir = null;
 let gatesOnly = false;
 let agentMode = false;
 let openUi = false;
+let diffBase = null;
+let targetPath = null;
+let doReproduce = false;
 let maxConcurrency = 4;
 let sandbox = 'trusted';
 let provider = process.env.ARENA_PROVIDER || null;
@@ -68,6 +75,9 @@ for (let i = 0; i < args.length; i++) {
   else if (arg === '--gates-only') gatesOnly = true;
   else if (arg === '--agent-mode') agentMode = true;
   else if (arg === '--ui' || arg === '--open') openUi = true;
+  else if (arg === '--diff') diffBase = args[i + 1] && !args[i + 1].startsWith('-') ? args[++i] : null;
+  else if (arg === '--target') targetPath = args[++i];
+  else if (arg === '--reproduce') doReproduce = true;
   else if (arg === '--sandbox') sandbox = args[++i] === 'untrusted' ? 'untrusted' : 'trusted';
   else if (arg === '--concurrency' || arg === '-c') maxConcurrency = Math.max(1, Math.min(16, parseInt(args[++i], 10) || 4));
   else if (arg === '--output' || arg === '-o') outputDir = resolve(process.cwd(), args[++i]);
@@ -88,6 +98,9 @@ Arguments:
 Options:
   --gates-only            Only detect and run machine quality gates, then exit
   --agent-mode            Generate tournament manifests for the host AI agent
+  --diff [ref]            Diff-aware audit: only files changed vs ref (default: working tree vs HEAD)
+  --target <path>         Targeted audit: only a subtree (e.g. --target src/payments)
+  --reproduce             After verification, run related tests for verified findings (targeted test runner)
   --ui, --open            Open the interactive HTML dashboard in the browser
   --sandbox <mode>        trusted (default) | untrusted (refuses tool execution)
   -c, --concurrency <n>   Max parallel specialist agents (default 4)
@@ -136,6 +149,19 @@ async function main() {
   const snapshot = buildRepoSnapshot(targetDir);
   console.log(`  ${snapshot.fileCount} files · langs: ${snapshot.languages.slice(0, 3).map((l) => l.language).join(', ') || 'n/a'} · tests: ${snapshot.tests.length} · pm: ${snapshot.packageManager}`);
   run.commit = snapshot.git?.head || null;
+
+  // ── Phase 1b: Semantic layer (P4) — LLM-free symbol & import graph ──
+  const symIndex = buildSymbolIndex(snapshot.allFiles, targetDir);
+  const importGraph = buildImportGraph(snapshot.allFiles, targetDir);
+  const semantic = createSemanticQueries(symIndex, importGraph, targetDir);
+  console.log(`  semantic: ${symIndex.symbols.size} symbols indexed · ${importGraph.importers.size} files with importers`);
+
+  // ── Phase 1c: Audit scope (P11) — full | diff | target ──
+  const auditMode = diffBase !== null || args.includes('--diff') ? 'diff' : (targetPath ? 'target' : 'full');
+  run.mode = auditMode === 'full' && gatesOnly ? 'gates-only' : auditMode;
+  const { scopedFiles, scopeNote, delta } = scopeFiles(targetDir, snapshot, auditMode, { base: diffBase, target: targetPath });
+  if (auditMode !== 'full') console.log(`  scope: ${scopeNote}`);
+  const diffText = auditMode === 'diff' && delta?.available ? gitDiffText(targetDir, diffBase) : null;
 
   // ── Phase 2: Deterministic Gates ──
   console.log(`\n${color.bold}[2/6] 🚦 Deterministic Gates${color.reset}`);
@@ -210,9 +236,9 @@ async function main() {
   console.log(`\n${color.bold}[4/6] ⚔️  Parallel Specialists (concurrency: ${maxConcurrency})${color.reset}`);
   const specialistResults = await runPool(plan.lenses, async (lens) => {
     const context = buildEvidenceContext({
-      snapshot, files: (snapshot.allFiles || []).slice(0, 2000),
+      snapshot, files: scopedFiles.slice(0, 2000),
       locateSourceFn: (ref, opts) => locateSource(targetDir, ref, opts),
-      lens,
+      lens, semantic, diffText,
     });
     const review = await runSpecialist({ provider: activeProvider, model: modelName, lens, evidenceContext: context, projectName });
     return { lens, review };
@@ -271,8 +297,53 @@ async function main() {
 
   let findings = verifiedOut.filter((r) => r.ok).map((r) => r.value);
 
+  // ── Scope filter (P11): in diff/target mode, out-of-scope findings are dropped
+  //    but counted honestly — and importers (impact) stay in scope.
+  let scopeDropped = 0;
+  if (auditMode !== 'full') {
+    const scopeSet = new Set(scopedFiles.map((f) => f.path));
+    // Impact expansion: direct importers of changed files remain in scope.
+    for (const f of scopedFiles) for (const imp of semantic.importedBy(f.path)) scopeSet.add(imp);
+    const inScope = [];
+    for (const f of findings) {
+      const file = String(f.path || '').replace(/:\d+.*$/, '');
+      if (scopeSet.has(file)) inScope.push(f);
+      else scopeDropped++;
+    }
+    findings = inScope;
+    if (scopeDropped > 0) console.log(`  ${color.dim}${scopeDropped} finding(s) outside the audit scope were dropped.${color.reset}`);
+  }
+
   // ── Phase: Finding Intelligence — fingerprint + dedupe ──
   findings = dedupeFindings(findings);
+
+  // ── Reproduction (P6-04/05): targeted tests for verified findings (opt-in) ──
+  if (doReproduce && findings.some((f) => f.status === 'verified')) {
+    console.log(`\n${color.bold}[5b] 🧪 Reproduction — targeted tests for verified findings${color.reset}`);
+    const byFile = new Map();
+    for (const f of findings.filter((x) => x.status === 'verified')) {
+      const file = String(f.path || '').replace(/:\d+.*$/, '');
+      if (!byFile.has(file)) byFile.set(file, []);
+      byFile.get(file).push(f);
+    }
+    const testsToRun = new Set();
+    for (const file of byFile.keys()) {
+      for (const t of findRelatedTests(file, snapshot, importGraph)) testsToRun.add(t);
+    }
+    if (testsToRun.size === 0) {
+      console.log(`  ${color.dim}no related test files found for verified findings — not_reproducible (honest state).${color.reset}`);
+      for (const f of findings.filter((x) => x.status === 'verified')) f.reproduction = { status: 'not_reproducible', reason: 'no related tests' };
+    } else {
+      console.log(`  running ${testsToRun.size} related test file(s)...`);
+      const rep = runTargetedTests(targetDir, [...testsToRun]);
+      console.log(`  ${rep.status === 'tests_passed' ? color.green : color.yellow}${rep.status}${color.reset} (${rep.command || 'n/a'})`);
+      const ev = evidence.addCommand(rep.command || 'targeted-tests', rep.output);
+      for (const f of findings.filter((x) => x.status === 'verified')) {
+        f.reproduction = { status: rep.status, evidenceRef: ev.id };
+        f.evidenceRefs = [...(f.evidenceRefs || []), ev.id];
+      }
+    }
+  }
 
   // ── Phase 6: Judge ──
   console.log(`\n${color.bold}[6/6] ⚖️  Principal Judge${color.reset}`);
@@ -285,7 +356,8 @@ async function main() {
   }
 
   const scores = computeScores(allGates, findings);
-  finishRun({ run, root: targetDir, snapshot, gates: allGates, findings, evidence: evidence.toJSON(), scores, outputDir, lenses: plan.lenses, judge, projectName, sandbox });
+  finishRun({ run, root: targetDir, snapshot, gates: allGates, findings, evidence: evidence.toJSON(), scores, outputDir, lenses: plan.lenses, judge, projectName, sandbox,
+    scopeNote, delta, scopeDropped, symIndex, importGraph });
 
   console.log(`\n${color.green}${color.bold}🎉 Audit Complete — ${scores.overall ?? 'N/A'}/100 (coverage ${scores.coverage.percent}%)${color.reset}`);
   for (const line of scores.explanations) console.log(`  ${color.dim}· ${line}${color.reset}`);
@@ -308,7 +380,8 @@ function readDocs(root) {
 }
 
 /** Persist every deliverable + the audit-run manifest, and close the run. */
-function finishRun({ run, root, snapshot, gates, findings, evidence, scores, outputDir, lenses, judge, projectName, sandbox: sandboxMode = 'trusted' }) {
+function finishRun({ run, root, snapshot, gates, findings, evidence, scores, outputDir, lenses, judge, projectName, sandbox: sandboxMode = 'trusted',
+  scopeNote = 'full', delta = null, scopeDropped = 0, symIndex = { symbols: new Map() }, importGraph = { importers: new Map() } }) {
   // Final stale-evidence sweep: a finding whose evidence no longer matches is stale.
   for (const f of findings) {
     if (f.evidenceRefs && f.evidenceRefs.length && f.status === 'verified') {
@@ -326,10 +399,13 @@ function finishRun({ run, root, snapshot, gates, findings, evidence, scores, out
 
   writeFileSync(join(outputDir, 'audit-run.json'), JSON.stringify({
     run, sandbox: sandboxPosture(sandboxMode),
+    scope: { mode: run.mode, note: scopeNote, dropped: scopeDropped || 0, delta: delta ? { base: delta.base, changed: delta.changed.length, available: delta.available } : null },
     snapshot: { ...snapshot, allFiles: undefined, sampleSourceFiles: snapshot.sampleSourceFiles.slice(0, 50) },
+    semantic: { indexedSymbols: symIndex.symbols.size, filesWithImporters: importGraph.importers.size },
     gates, findings, evidence, lenses, judge: judge || null,
   }, null, 2), 'utf-8');
   writeFileSync(join(outputDir, 'findings.json'), JSON.stringify({ scores, findings }, null, 2), 'utf-8');
+  writeFileSync(join(outputDir, 'report.sarif'), JSON.stringify(toSarif({ projectName, findings, gates }), null, 2), 'utf-8');
   writeFileSync(join(outputDir, 'REPORT.md'), md, 'utf-8');
 
   const html = generateDashboardHtml({

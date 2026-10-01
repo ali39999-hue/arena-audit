@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node bin/arena-audit.mjs",
     "test": "node --test \"tests/unit/**/*.test.mjs\"",
-    "smoke": "node bin/arena-audit.mjs --gates-only"
+    "smoke": "node bin/arena-audit.mjs --gates-only",
+    "eval": "node src/evals/run-eval.mjs"
   },
   "repository": {
     "type": "git",

@@ -1,0 +1,53 @@
+# Arena Audit — PR / push audit (P12-01)
+# Diff-aware: on PRs only changed files (+ their importers) are audited.
+# Requires a provider key in repo secrets (e.g. ANTHROPIC_API_KEY / OPENAI_API_KEY).
+# Set OPENAI_API_KEY below or replace the env with your preferred provider.
+
+name: Arena Audit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  arena:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # for SARIF upload
+      pull-requests: write     # for PR comments (optional)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # full history for diff-aware mode
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run Arena Audit (diff-aware on PRs)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="origin/${{ github.base_ref }}"
+            git fetch origin "${{ github.base_ref }}" || true
+            node bin/arena-audit.mjs . --diff "$BASE" --sandbox trusted --output arena-out
+          else
+            node bin/arena-audit.mjs . --gates-only --output arena-out
+          fi
+
+      - name: Upload SARIF to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: arena-out/report.sarif
+
+      - name: Upload dashboard artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arena-dashboard
+          path: arena-out/

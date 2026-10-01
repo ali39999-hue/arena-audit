@@ -19,8 +19,15 @@
 | Scoring 2.0: `NOT CHECKED ≠ PASS` (no gates ⇒ overall = null + coverage %) | ✅ | `computeScores()` — unit tested |
 | Sandbox: secrets stripped from child envs; untrusted repos refused without explicit trust | ✅ | `src/sandbox/policy.mjs` |
 | Versioned audit contract (`audit-run.json`: runId, engine, model, commit, schema) | ✅ | `src/core/schemas.mjs` |
+| Semantic layer without dependencies: symbol index, import graph, `findSymbol/findReferences/importedBy/impactOf` | ✅ | `src/semantic/symbols.mjs` — line-exact, evidence-anchorable |
+| Diff-aware audit: `--diff [ref]` (PR mode) and `--target <path>` with honest scope accounting | ✅ | `src/git/delta.mjs` — findings outside scope dropped & counted |
+| Impact analysis: changed files → transitive importers → related tests | ✅ | `semantic.impactOf()` |
+| Reproduction engine: targeted test runs for verified findings (`--reproduce`) | ✅ | `src/verification/reproduce.mjs` — `not_reproducible` is a labeled state, never a silent pass |
+| SARIF 2.1.0 output for GitHub Advanced Security / GitLab | ✅ | `src/outputs/sarif.mjs` → `report.sarif` |
+| GitHub Action: diff-aware PR audit + SARIF upload | ✅ | `.github/workflows/arena-audit.yml` |
+| Evaluation Lab: deterministic evidence benchmark (`npm run eval`) | ✅ | `src/evals/` + golden fixtures — precision/recall gates in CI-able script |
 | Interactive HTML dashboard: Kanban board + rubric + filters, zero CDN, offline | ✅ | `src/dashboard.mjs` |
-| Docker sandbox isolation, AST/semantic layer, SARIF, diff-aware audits, GitHub Checks | 🚧 Planned | See `docs/ARCHITECTURE.md` roadmap alignment |
+| Docker sandbox isolation, Tree-sitter AST, mutation testing, control plane | 🚧 Planned | See `docs/ARCHITECTURE.md` roadmap alignment |
 
 ## ⚔️ vs. `arena-skill` (original)
 
@@ -51,6 +58,15 @@ OLLAMA_HOST=http://localhost:11434 npx arena-audit --provider ollama --model lla
 # Machine gates only (real exit codes, dashboard included):
 npx arena-audit --gates-only --ui
 
+# PR / diff-aware audit (only changed files + their importers):
+npx arena-audit --diff origin/main
+
+# Targeted audit of a subtree:
+npx arena-audit --target src/payments
+
+# Run targeted tests for verified findings (reproduction):
+npx arena-audit --diff --reproduce
+
 # Inside an AI harness without API keys — generate the tournament manifest
 # for the host agent to execute:
 npx arena-audit --agent-mode
@@ -74,14 +90,16 @@ Then `/arena-audit`.
 | File | What it is |
 | :--- | :--- |
 | `index.html` | Interactive offline dashboard: health score (or honest `N/A`), live Kanban (تأیید شده / نیاز به بازبینی / رد شده), rubric matrix, filters, `vscode://` deep links |
-| `audit-run.json` | Versioned manifest: runId, engine/model/commit, full evidence store, all findings with statuses |
+| `audit-run.json` | Versioned manifest: runId, engine/model/commit, scope (diff/target), semantic stats, full evidence store, all findings with statuses |
+| `report.sarif` | SARIF 2.1.0 for GitHub Advanced Security / GitLab / IDE integration |
 | `findings.json` | Machine-readable scores + findings |
 | `REPORT.md` | Executive verdict, priorities, verified/refuted/inconclusive breakdown, explicit not-covered section |
 
 ## 🧪 Development
 
 ```bash
-npm test          # 29 zero-dependency unit tests (node:test)
+npm test          # 38 zero-dependency unit tests (node:test)
+npm run eval      # deterministic evidence benchmark (precision/recall gates)
 npm run smoke     # self gates-only audit
 ```
 
